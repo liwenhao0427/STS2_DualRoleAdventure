@@ -86,6 +86,31 @@ internal sealed class LocalMultiSessionState
         return true;
     }
 
+    public bool TrySetCurrentPlayer(ulong playerId)
+    {
+        if (!IsInitialized)
+        {
+            return false;
+        }
+
+        int index = _orderedPlayerIds.IndexOf(playerId);
+        if (index < 0)
+        {
+            LocalMultiControlLogger.Warn($"尝试设置当前操控角色失败：玩家 {playerId} 不在会话中。");
+            return false;
+        }
+
+        if (_activeIndex == index)
+        {
+            return true;
+        }
+
+        ulong previousPlayerId = _orderedPlayerIds[_activeIndex];
+        _activeIndex = index;
+        LocalMultiControlLogger.Info($"切换操控角色(指定): {previousPlayerId} -> {_orderedPlayerIds[_activeIndex]}");
+        return true;
+    }
+
     private bool CanSwitch(string actionName)
     {
         if (!IsInitialized)

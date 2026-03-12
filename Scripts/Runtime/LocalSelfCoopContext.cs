@@ -34,6 +34,8 @@ internal static class LocalSelfCoopContext
 
     private static ulong? _pendingEventAutoSwitchPlayerId;
 
+    private static bool _eventAutoSwitchPending;
+
     public static ulong ResolvePrimaryPlayerId()
     {
         ulong localPlatformPlayerId = PlatformUtil.GetLocalPlayerId(PlatformUtil.PrimaryPlatform);
@@ -70,6 +72,7 @@ internal static class LocalSelfCoopContext
         CurrentLobbyEditingPlayerId = PrimaryPlayerId;
         ActiveCharacterSelectScreen = null;
         _pendingEventAutoSwitchPlayerId = null;
+        _eventAutoSwitchPending = false;
     }
 
     public static bool SwitchLobbyEditingPlayer(bool next)
@@ -116,7 +119,7 @@ internal static class LocalSelfCoopContext
         LocalMultiControlLogger.Info($"记录事件自动切换请求: player={playerId}");
     }
 
-    public static bool ShouldAutoSwitchAfterEventState(EventModel eventModel)
+    public static bool ShouldQueueEventAutoSwitchAfterEventState(EventModel eventModel)
     {
         if (!IsEnabled || !_pendingEventAutoSwitchPlayerId.HasValue || eventModel.Owner == null)
         {
@@ -129,6 +132,18 @@ internal static class LocalSelfCoopContext
         }
 
         _pendingEventAutoSwitchPlayerId = null;
+        _eventAutoSwitchPending = true;
+        return true;
+    }
+
+    public static bool TryConsumePendingEventAutoSwitch()
+    {
+        if (!_eventAutoSwitchPending)
+        {
+            return false;
+        }
+
+        _eventAutoSwitchPending = false;
         return true;
     }
 

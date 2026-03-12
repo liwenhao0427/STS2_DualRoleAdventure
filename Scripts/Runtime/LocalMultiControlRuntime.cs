@@ -84,6 +84,29 @@ internal static class LocalMultiControlRuntime
         }
     }
 
+    public static void SwitchControlledPlayerTo(ulong playerId, string source)
+    {
+        if (!RunManager.Instance.IsInProgress)
+        {
+            return;
+        }
+
+        if (Session.TrySetCurrentPlayer(playerId))
+        {
+            ApplyControlContext(source);
+        }
+    }
+
+    public static void TryRunPendingEventAutoSwitch(string source)
+    {
+        if (!LocalSelfCoopContext.TryConsumePendingEventAutoSwitch())
+        {
+            return;
+        }
+
+        SwitchNextControlledPlayer(source);
+    }
+
     private static void ApplyControlContext(string source)
     {
         ulong? currentControlledPlayerId = Session.CurrentControlledPlayerId;
