@@ -1,4 +1,5 @@
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Messages.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Messages.Game.Sync;
@@ -58,11 +59,13 @@ internal sealed class LocalLoopbackHostGameService : INetHostGameService
 
     public void SendMessage<T>(T message, ulong playerId) where T : INetMessage
     {
+        AlignSenderWithLocalContext();
         LocalMultiControlLogger.Info($"本地回环定向发送消息: {typeof(T).Name}, sender={_currentSenderId}, target={playerId}");
     }
 
     public void SendMessage<T>(T message) where T : INetMessage
     {
+        AlignSenderWithLocalContext();
         if (message is not PeerInputMessage)
         {
             LocalMultiControlLogger.Info($"本地回环广播消息: {typeof(T).Name}, sender={_currentSenderId}");
@@ -185,5 +188,13 @@ internal sealed class LocalLoopbackHostGameService : INetHostGameService
         };
         DispatchLoopback(syntheticMessage, LocalSelfCoopContext.SecondaryPlayerId);
         LocalMultiControlLogger.Info("本地回环已注入第二玩家同步消息，避免开局同步阻塞。");
+    }
+
+    private void AlignSenderWithLocalContext()
+    {
+        if (LocalContext.NetId.HasValue && LocalContext.NetId.Value != _currentSenderId)
+        {
+            SetCurrentSenderId(LocalContext.NetId.Value);
+        }
     }
 }

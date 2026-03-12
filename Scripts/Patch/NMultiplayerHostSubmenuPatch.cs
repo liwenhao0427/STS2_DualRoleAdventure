@@ -2,6 +2,7 @@ using System;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
+using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 
@@ -60,6 +61,8 @@ internal static class NMultiplayerHostSubmenuPatch
     private static void OnLocalSelfCoopPressed(NMultiplayerHostSubmenu submenu)
     {
         LocalMultiControlLogger.Info("进入与自己联机流程（iter-03）。");
+        SaveManager.Instance.DeleteCurrentMultiplayerRun();
+        LocalMultiControlLogger.Info("已清理历史多人存档，避免旧格式校验干扰。");
 
         NSubmenuStack? stack = GetStack(submenu);
         if (stack == null)

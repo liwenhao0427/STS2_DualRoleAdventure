@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using HarmonyLib;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes;
@@ -9,6 +12,8 @@ namespace LocalMultiControl.Scripts.Runtime;
 internal static class LocalMultiControlRuntime
 {
     private static readonly LocalMultiSessionState Session = new LocalMultiSessionState();
+
+    private static readonly HashSet<string> _fieldSyncFailures = new HashSet<string>();
 
     public static LocalMultiSessionState SessionState => Session;
 
@@ -76,11 +81,48 @@ internal static class LocalMultiControlRuntime
         ulong? previousNetId = LocalContext.NetId;
         LocalContext.NetId = currentControlledPlayerId.Value;
         LocalSelfCoopContext.NetService?.SetCurrentSenderId(currentControlledPlayerId.Value);
+        SyncRunSynchronizerLocalPlayerId(currentControlledPlayerId.Value);
         LocalMultiControlLogger.Info($"控制上下文已更新: {previousNetId?.ToString() ?? "null"} -> {currentControlledPlayerId.Value}, source={source}");
         if (source != "run-launched")
         {
             string slotLabel = currentControlledPlayerId.Value == LocalSelfCoopContext.PrimaryPlayerId ? "1" : "2";
             NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"控制角色: 槽位{slotLabel}"));
+        }
+    }
+
+    private static void SyncRunSynchronizerLocalPlayerId(ulong playerId)
+    {
+        if (!RunManager.Instance.IsInProgress)
+        {
+            return;
+        }
+
+        TrySetLocalPlayerId(RunManager.Instance.EventSynchronizer, playerId, nameof(RunManager.EventSynchronizer));
+        TrySetLocalPlayerId(RunManager.Instance.RewardSynchronizer, playerId, nameof(RunManager.RewardSynchronizer));
+        TrySetLocalPlayerId(RunManager.Instance.RestSiteSynchronizer, playerId, nameof(RunManager.RestSiteSynchronizer));
+        TrySetLocalPlayerId(RunManager.Instance.OneOffSynchronizer, playerId, nameof(RunManager.OneOffSynchronizer));
+        TrySetLocalPlayerId(RunManager.Instance.TreasureRoomRelicSynchronizer, playerId, nameof(RunManager.TreasureRoomRelicSynchronizer));
+        TrySetLocalPlayerId(RunManager.Instance.FlavorSynchronizer, playerId, nameof(RunManager.FlavorSynchronizer));
+    }
+
+    private static void TrySetLocalPlayerId(object? target, ulong playerId, string componentName)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        try
+        {
+            AccessTools.Field(target.GetType(), "_localPlayerId")?.SetValue(target, playerId);
+        }
+        catch (Exception exception)
+        {
+            string key = $"{componentName}:{target.GetType().Name}";
+            if (_fieldSyncFailures.Add(key))
+            {
+                LocalMultiControlLogger.Warn($"同步 {key} 的 _localPlayerId 失败: {exception.Message}");
+            }
         }
     }
 }
