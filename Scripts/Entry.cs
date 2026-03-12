@@ -1,6 +1,6 @@
 using HarmonyLib;
-using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
+using LocalMultiControl.Scripts.Runtime;
 
 namespace LocalMultiControl.Scripts;
 
@@ -11,8 +11,9 @@ public partial class Entry
 
     public static void Init()
     {
+        LocalMultiControlLogger.Info("开始初始化 Harmony 补丁。");
         _harmony = new Harmony("sts2.localmulticontrol");
         _harmony.PatchAll();
-        Log.Info("[LocalMultiControl] Mod initialized");
+        LocalMultiControlLogger.Info("Mod 初始化完成。");
     }
 }

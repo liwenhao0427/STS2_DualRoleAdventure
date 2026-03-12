@@ -18,9 +18,9 @@
 
 ### T1 - 本地多控会话骨架
 
-- [ ] 新增本地会话状态管理（2 人固定槽位）。
-- [ ] 维护当前操控角色 `CurrentControlledPlayerId`。
-- [ ] 提供切换接口：`SwitchNextPlayer()` / `SwitchPrevPlayer()`。
+- [x] 新增本地会话状态管理（2 人固定槽位）。
+- [x] 维护当前操控角色 `CurrentControlledPlayerId`。
+- [x] 提供切换接口：`SwitchNextPlayer()` / `SwitchPrevPlayer()`。
 
 ### T2 - 联机入口注入
 
@@ -61,4 +61,4 @@
 ## 当前执行状态
 
 - 状态：进行中
-- 当前子任务：T1 本地多控会话骨架
+- 当前子任务：T2 联机入口注入
