@@ -79,7 +79,8 @@ internal static class LocalMultiControlRuntime
         LocalMultiControlLogger.Info($"控制上下文已更新: {previousNetId?.ToString() ?? "null"} -> {currentControlledPlayerId.Value}, source={source}");
         if (source != "run-launched")
         {
-            NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"控制角色: {currentControlledPlayerId.Value}"));
+            string slotLabel = currentControlledPlayerId.Value == LocalSelfCoopContext.PrimaryPlayerId ? "1" : "2";
+            NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"控制角色: 槽位{slotLabel}"));
         }
     }
 }

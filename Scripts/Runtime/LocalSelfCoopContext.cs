@@ -73,7 +73,8 @@ internal static class LocalSelfCoopContext
         NetService.SetCurrentSenderId(CurrentLobbyEditingPlayerId);
         LocalContext.NetId = CurrentLobbyEditingPlayerId;
         LocalMultiControlLogger.Info($"大厅编辑角色切换: {previous} -> {CurrentLobbyEditingPlayerId}");
-        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"大厅编辑角色: {CurrentLobbyEditingPlayerId}"));
+        string slotLabel = CurrentLobbyEditingPlayerId == PrimaryPlayerId ? "1" : "2";
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"大厅编辑角色: 槽位{slotLabel}"));
         return true;
     }
 
