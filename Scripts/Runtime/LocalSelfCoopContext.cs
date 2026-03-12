@@ -10,6 +10,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Platform;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Saves;
+using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.Unlocks;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Models;
@@ -48,6 +49,32 @@ internal static class LocalSelfCoopContext
         SecondaryPlayerId = localPlatformPlayerId == ulong.MaxValue ? localPlatformPlayerId - 1 : localPlatformPlayerId + 1;
         LocalMultiControlLogger.Info($"本地双人ID已解析: primary={PrimaryPlayerId}, secondary={SecondaryPlayerId}");
         return PrimaryPlayerId;
+    }
+
+    public static void UseSavedPlayerIds(ulong primaryPlayerId, ulong secondaryPlayerId)
+    {
+        if (primaryPlayerId == 0 || secondaryPlayerId == 0 || primaryPlayerId == secondaryPlayerId)
+        {
+            LocalMultiControlLogger.Warn($"忽略读档玩家ID恢复：primary={primaryPlayerId}, secondary={secondaryPlayerId}");
+            return;
+        }
+
+        PrimaryPlayerId = primaryPlayerId;
+        SecondaryPlayerId = secondaryPlayerId;
+        CurrentLobbyEditingPlayerId = primaryPlayerId;
+        LocalMultiControlLogger.Info($"已从本地双人存档恢复玩家ID: primary={PrimaryPlayerId}, secondary={SecondaryPlayerId}");
+    }
+
+    public static bool IsSaveOwnedByLocalSelfCoop(SerializableRun run)
+    {
+        if (run.Players.Count != 2)
+        {
+            return false;
+        }
+
+        bool hasPrimary = run.Players.Any((player) => player.NetId == PrimaryPlayerId);
+        bool hasSecondary = run.Players.Any((player) => player.NetId == SecondaryPlayerId);
+        return hasPrimary && hasSecondary;
     }
 
     public static void Enable(LocalLoopbackHostGameService netService)

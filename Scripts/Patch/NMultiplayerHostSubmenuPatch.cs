@@ -61,6 +61,7 @@ internal static class NMultiplayerHostSubmenuPatch
     private static void OnLocalSelfCoopPressed(NMultiplayerHostSubmenu submenu)
     {
         LocalMultiControlLogger.Info("进入与自己联机流程（iter-03）。");
+        LocalSelfCoopSaveTag.ClearCurrentProfile();
         SaveManager.Instance.DeleteCurrentMultiplayerRun();
         LocalMultiControlLogger.Info("已清理历史多人存档，避免旧格式校验干扰。");
 
@@ -72,6 +73,7 @@ internal static class NMultiplayerHostSubmenuPatch
         }
 
         ulong primaryPlayerId = LocalSelfCoopContext.ResolvePrimaryPlayerId();
+        LocalSelfCoopSaveTag.MarkCurrentProfile(LocalSelfCoopContext.PrimaryPlayerId, LocalSelfCoopContext.SecondaryPlayerId);
         LocalLoopbackHostGameService netService = new LocalLoopbackHostGameService(primaryPlayerId);
         LocalSelfCoopContext.Enable(netService);
 
