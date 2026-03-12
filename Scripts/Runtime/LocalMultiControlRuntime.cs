@@ -335,8 +335,10 @@ internal static class LocalMultiControlRuntime
             }
 
             topBar.Portrait.Initialize(player);
-            topBar.PotionContainer.Initialize(runState);
-            NRun.Instance?.GlobalUi?.RelicInventory.Initialize(runState);
+
+            // 本地双人当前改为“药水/遗物共用展示”策略：
+            // 切换角色时不重建顶部药水栏与遗物栏，避免出现切换错乱与节点叠层。
+            // 若后续恢复分角色展示，需要先通过实机回归验证再调整。
         }
         catch (Exception exception)
         {
