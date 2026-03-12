@@ -1,9 +1,12 @@
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Multiplayer.Messages.Game;
+using MegaCrit.Sts2.Core.Multiplayer.Messages.Game.Sync;
 using MegaCrit.Sts2.Core.Multiplayer.Quality;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Transport;
 using MegaCrit.Sts2.Core.Platform;
+using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Runtime;
 
@@ -60,7 +63,12 @@ internal sealed class LocalLoopbackHostGameService : INetHostGameService
 
     public void SendMessage<T>(T message) where T : INetMessage
     {
-        LocalMultiControlLogger.Info($"本地回环广播消息: {typeof(T).Name}, sender={_currentSenderId}");
+        if (message is not PeerInputMessage)
+        {
+            LocalMultiControlLogger.Info($"本地回环广播消息: {typeof(T).Name}, sender={_currentSenderId}");
+        }
+
+        TryDispatchSyntheticSecondPlayerSync(message);
     }
 
     public void RegisterMessageHandler<T>(MessageHandlerDelegate<T> messageHandlerDelegate) where T : INetMessage
@@ -145,5 +153,37 @@ internal sealed class LocalLoopbackHostGameService : INetHostGameService
     {
         LocalMultiControlLogger.Info($"本地回环设置广播就绪（占位）: peer={peerId}");
         ClientConnected?.Invoke(peerId);
+    }
+
+    private void TryDispatchSyntheticSecondPlayerSync<T>(T message) where T : INetMessage
+    {
+        if (_currentSenderId != LocalSelfCoopContext.PrimaryPlayerId)
+        {
+            return;
+        }
+
+        if (message is not SyncPlayerDataMessage)
+        {
+            return;
+        }
+
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
+        if (runState == null)
+        {
+            return;
+        }
+
+        var secondPlayer = runState.Players.FirstOrDefault((player) => player.NetId == LocalSelfCoopContext.SecondaryPlayerId);
+        if (secondPlayer == null)
+        {
+            return;
+        }
+
+        SyncPlayerDataMessage syntheticMessage = new SyncPlayerDataMessage
+        {
+            player = secondPlayer.ToSerializable()
+        };
+        DispatchLoopback(syntheticMessage, LocalSelfCoopContext.SecondaryPlayerId);
+        LocalMultiControlLogger.Info("本地回环已注入第二玩家同步消息，避免开局同步阻塞。");
     }
 }
