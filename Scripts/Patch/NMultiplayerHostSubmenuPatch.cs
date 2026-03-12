@@ -76,6 +76,7 @@ internal static class NMultiplayerHostSubmenuPatch
         LocalSelfCoopContext.Enable(netService);
 
         NCharacterSelectScreen characterSelectScreen = stack.GetSubmenuType<NCharacterSelectScreen>();
+        LocalSelfCoopContext.ActiveCharacterSelectScreen = characterSelectScreen;
         characterSelectScreen.InitializeMultiplayerAsHost(netService, 2);
         if (!LocalSelfCoopContext.BootstrapSecondPlayer(characterSelectScreen))
         {

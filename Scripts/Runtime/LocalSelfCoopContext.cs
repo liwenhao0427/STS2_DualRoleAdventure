@@ -1,4 +1,6 @@
+using System;
 using System.Linq;
+using Godot;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes;
@@ -8,6 +10,7 @@ using MegaCrit.Sts2.Core.Platform;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Unlocks;
+using HarmonyLib;
 
 namespace LocalMultiControl.Scripts.Runtime;
 
@@ -22,6 +25,8 @@ internal static class LocalSelfCoopContext
     public static LocalLoopbackHostGameService? NetService { get; private set; }
 
     public static ulong CurrentLobbyEditingPlayerId { get; private set; } = 1;
+
+    public static NCharacterSelectScreen? ActiveCharacterSelectScreen { get; set; }
 
     public static ulong ResolvePrimaryPlayerId()
     {
@@ -57,6 +62,7 @@ internal static class LocalSelfCoopContext
         IsEnabled = false;
         NetService = null;
         CurrentLobbyEditingPlayerId = PrimaryPlayerId;
+        ActiveCharacterSelectScreen = null;
     }
 
     public static bool SwitchLobbyEditingPlayer(bool next)
@@ -72,10 +78,47 @@ internal static class LocalSelfCoopContext
             : (CurrentLobbyEditingPlayerId == PrimaryPlayerId ? SecondaryPlayerId : PrimaryPlayerId);
         NetService.SetCurrentSenderId(CurrentLobbyEditingPlayerId);
         LocalContext.NetId = CurrentLobbyEditingPlayerId;
+        SyncCharacterSelectHighlight();
         LocalMultiControlLogger.Info($"大厅编辑角色切换: {previous} -> {CurrentLobbyEditingPlayerId}");
         string slotLabel = CurrentLobbyEditingPlayerId == PrimaryPlayerId ? "1" : "2";
         NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"大厅编辑角色: 槽位{slotLabel}"));
         return true;
+    }
+
+    private static void SyncCharacterSelectHighlight()
+    {
+        if (ActiveCharacterSelectScreen == null)
+        {
+            return;
+        }
+
+        try
+        {
+            LobbyPlayer localPlayer = ActiveCharacterSelectScreen.Lobby.LocalPlayer;
+            Control? charButtonContainer = AccessTools.Field(typeof(NCharacterSelectScreen), "_charButtonContainer")?.GetValue(ActiveCharacterSelectScreen) as Control;
+            if (charButtonContainer == null)
+            {
+                return;
+            }
+
+            NCharacterSelectButton? selectedButton = null;
+            foreach (NCharacterSelectButton button in charButtonContainer.GetChildren().OfType<NCharacterSelectButton>())
+            {
+                bool isSelected = button.Character == localPlayer.character;
+                AccessTools.Field(typeof(NCharacterSelectButton), "_isSelected")?.SetValue(button, isSelected);
+                AccessTools.Method(typeof(NCharacterSelectButton), "RefreshState")?.Invoke(button, Array.Empty<object>());
+                if (isSelected)
+                {
+                    selectedButton = button;
+                }
+            }
+
+            AccessTools.Field(typeof(NCharacterSelectScreen), "_selectedButton")?.SetValue(ActiveCharacterSelectScreen, selectedButton);
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"同步角色选择高亮失败: {exception.Message}");
+        }
     }
 
     public static bool BootstrapSecondPlayer(NCharacterSelectScreen characterSelectScreen)
