@@ -59,8 +59,7 @@ internal static class NMultiplayerHostSubmenuPatch
 
     private static void OnLocalSelfCoopPressed(NMultiplayerHostSubmenu submenu)
     {
-        LocalMultiControlLogger.Info("进入与自己联机流程（iter-02 占位实现）。");
-        LocalMultiControlLogger.Info("初始化2人本地队伍（占位日志，iter-03 接入真实双角色运行）。");
+        LocalMultiControlLogger.Info("进入与自己联机流程（iter-03）。");
 
         NSubmenuStack? stack = GetStack(submenu);
         if (stack == null)
@@ -69,10 +68,18 @@ internal static class NMultiplayerHostSubmenuPatch
             return;
         }
 
+        LocalLoopbackHostGameService netService = new LocalLoopbackHostGameService(LocalSelfCoopContext.PrimaryPlayerId);
+        LocalSelfCoopContext.Enable(netService);
+
         NCharacterSelectScreen characterSelectScreen = stack.GetSubmenuType<NCharacterSelectScreen>();
-        characterSelectScreen.InitializeSingleplayer();
+        characterSelectScreen.InitializeMultiplayerAsHost(netService, 2);
+        if (!LocalSelfCoopContext.BootstrapSecondPlayer(characterSelectScreen))
+        {
+            LocalMultiControlLogger.Warn("初始化2人本地队伍失败，已回退为单人联机入口行为。");
+        }
+
         stack.Push(characterSelectScreen);
-        LocalMultiControlLogger.Info("已跳转到角色选择界面（当前临时复用单人初始化路径）。");
+        LocalMultiControlLogger.Info("已跳转到2人本地队伍角色选择界面。");
     }
 
     private static NSubmenuStack? GetStack(NSubmenu submenu)

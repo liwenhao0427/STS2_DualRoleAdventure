@@ -25,6 +25,7 @@ internal static class LocalMultiControlRuntime
     public static void OnRunCleanup()
     {
         Session.Reset("RunManager.CleanUp");
+        LocalSelfCoopContext.Disable("RunManager.CleanUp");
         LocalMultiControlLogger.Info("RunManager.CleanUp 后已完成本地多控会话清理。");
     }
 }
