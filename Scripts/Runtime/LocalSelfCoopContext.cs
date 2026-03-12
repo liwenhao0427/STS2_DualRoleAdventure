@@ -1,6 +1,7 @@
 using System.Linq;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
+using MegaCrit.Sts2.Core.Platform;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Unlocks;
 
@@ -8,13 +9,27 @@ namespace LocalMultiControl.Scripts.Runtime;
 
 internal static class LocalSelfCoopContext
 {
-    public const ulong PrimaryPlayerId = 1;
+    public static ulong PrimaryPlayerId { get; private set; } = 1;
 
-    public const ulong SecondaryPlayerId = 2;
+    public static ulong SecondaryPlayerId { get; private set; } = 2;
 
     public static bool IsEnabled { get; private set; }
 
     public static LocalLoopbackHostGameService? NetService { get; private set; }
+
+    public static ulong ResolvePrimaryPlayerId()
+    {
+        ulong localPlatformPlayerId = PlatformUtil.GetLocalPlayerId(PlatformUtil.PrimaryPlatform);
+        if (localPlatformPlayerId == 0)
+        {
+            localPlatformPlayerId = 1;
+        }
+
+        PrimaryPlayerId = localPlatformPlayerId;
+        SecondaryPlayerId = localPlatformPlayerId == ulong.MaxValue ? localPlatformPlayerId - 1 : localPlatformPlayerId + 1;
+        LocalMultiControlLogger.Info($"本地双人ID已解析: primary={PrimaryPlayerId}, secondary={SecondaryPlayerId}");
+        return PrimaryPlayerId;
+    }
 
     public static void Enable(LocalLoopbackHostGameService netService)
     {

@@ -1,4 +1,7 @@
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Runtime;
@@ -68,5 +71,9 @@ internal static class LocalMultiControlRuntime
         LocalContext.NetId = currentControlledPlayerId.Value;
         LocalSelfCoopContext.NetService?.SetCurrentSenderId(currentControlledPlayerId.Value);
         LocalMultiControlLogger.Info($"控制上下文已更新: {previousNetId?.ToString() ?? "null"} -> {currentControlledPlayerId.Value}, source={source}");
+        if (source != "run-launched")
+        {
+            NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"控制角色: {currentControlledPlayerId.Value}"));
+        }
     }
 }

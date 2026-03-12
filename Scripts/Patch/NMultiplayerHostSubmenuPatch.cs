@@ -68,7 +68,8 @@ internal static class NMultiplayerHostSubmenuPatch
             return;
         }
 
-        LocalLoopbackHostGameService netService = new LocalLoopbackHostGameService(LocalSelfCoopContext.PrimaryPlayerId);
+        ulong primaryPlayerId = LocalSelfCoopContext.ResolvePrimaryPlayerId();
+        LocalLoopbackHostGameService netService = new LocalLoopbackHostGameService(primaryPlayerId);
         LocalSelfCoopContext.Enable(netService);
 
         NCharacterSelectScreen characterSelectScreen = stack.GetSubmenuType<NCharacterSelectScreen>();

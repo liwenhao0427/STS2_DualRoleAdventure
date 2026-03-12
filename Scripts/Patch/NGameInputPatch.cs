@@ -16,12 +16,16 @@ internal static class NGameInputPatch
             return;
         }
 
-        if (keyEvent.Keycode == Key.Bracketleft)
+        Key keycode = keyEvent.Keycode;
+        Key physicalKeycode = keyEvent.PhysicalKeycode;
+        if (keycode == Key.Bracketleft || physicalKeycode == Key.Bracketleft)
         {
+            LocalMultiControlLogger.Info("检测到切换热键: [");
             LocalMultiControlRuntime.SwitchPreviousControlledPlayer("hotkey:[");
         }
-        else if (keyEvent.Keycode == Key.Bracketright)
+        else if (keycode == Key.Bracketright || physicalKeycode == Key.Bracketright)
         {
+            LocalMultiControlLogger.Info("检测到切换热键: ]");
             LocalMultiControlRuntime.SwitchNextControlledPlayer("hotkey:]");
         }
     }

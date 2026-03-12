@@ -15,3 +15,7 @@ LocalMultiControl.pck
 *.user
 *.suo
 *.tmp
+
+# Keep repository code-focused
+*.uid
+*.sln
