@@ -1,6 +1,8 @@
+using System.Linq;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
+using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
@@ -32,5 +34,42 @@ internal static class NEventRoomPatch
                 LocalMultiControlRuntime.TryRunPendingEventAutoSwitch("event-auto-next");
             }
         }).CallDeferred();
+    }
+}
+
+[HarmonyPatch(typeof(NEventRoom), nameof(NEventRoom.OptionButtonClicked))]
+internal static class NEventRoomOptionButtonPatch
+{
+    [HarmonyPrefix]
+    private static bool Prefix(NEventRoom __instance, EventOption option)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !option.IsProceed || !RunManager.Instance.IsInProgress)
+        {
+            return true;
+        }
+
+        if (RunManager.Instance.EventSynchronizer.IsShared)
+        {
+            return true;
+        }
+
+        EventModel? currentEvent = AccessTools.Field(typeof(NEventRoom), "_event")?.GetValue(__instance) as EventModel;
+        if (currentEvent?.Owner == null || !currentEvent.IsFinished)
+        {
+            return true;
+        }
+
+        EventModel? pendingEvent = RunManager.Instance.EventSynchronizer.Events.FirstOrDefault((eventModel) =>
+            eventModel.Owner != null &&
+            eventModel.Owner.NetId != currentEvent.Owner.NetId &&
+            !eventModel.IsFinished);
+        if (pendingEvent?.Owner == null)
+        {
+            return true;
+        }
+
+        LocalMultiControlLogger.Info($"检测到另一名角色尚未完成事件，拦截 Proceed 并切换到 player={pendingEvent.Owner.NetId}");
+        LocalMultiControlRuntime.SwitchControlledPlayerTo(pendingEvent.Owner.NetId, "event-proceed-next-player");
+        return false;
     }
 }
