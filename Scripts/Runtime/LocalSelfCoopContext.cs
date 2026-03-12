@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
@@ -117,28 +118,43 @@ internal static class LocalSelfCoopContext
                 return;
             }
 
+            List<NCharacterSelectButton> buttons = charButtonContainer.GetChildren().OfType<NCharacterSelectButton>().ToList();
+            foreach (NCharacterSelectButton button in buttons)
+            {
+                foreach (LobbyPlayer player in ActiveCharacterSelectScreen.Lobby.Players)
+                {
+                    button.OnRemotePlayerDeselected(player.id);
+                }
+            }
+
             NCharacterSelectButton? selectedButton = null;
-            foreach (NCharacterSelectButton button in charButtonContainer.GetChildren().OfType<NCharacterSelectButton>())
+            foreach (NCharacterSelectButton button in buttons)
             {
                 bool isSelected = button.Character == localPlayer.character;
                 AccessTools.Field(typeof(NCharacterSelectButton), "_isSelected")?.SetValue(button, isSelected);
-                AccessTools.Method(typeof(NCharacterSelectButton), "RefreshState")?.Invoke(button, Array.Empty<object>());
                 if (isSelected)
                 {
                     selectedButton = button;
                 }
             }
 
-            AccessTools.Field(typeof(NCharacterSelectScreen), "_selectedButton")?.SetValue(ActiveCharacterSelectScreen, selectedButton);
-            if (selectedButton != null)
-            {
-                ActiveCharacterSelectScreen.SelectCharacter(selectedButton, selectedButton.Character);
-            }
-
             foreach (LobbyPlayer player in ActiveCharacterSelectScreen.Lobby.Players)
             {
-                AccessTools.Method(typeof(NCharacterSelectScreen), "RefreshButtonSelectionForPlayer")?.Invoke(ActiveCharacterSelectScreen, new object[] { player });
+                if (player.id == localPlayer.id)
+                {
+                    continue;
+                }
+
+                NCharacterSelectButton? targetButton = buttons.FirstOrDefault((button) => button.Character == player.character);
+                targetButton?.OnRemotePlayerSelected(player.id);
             }
+
+            foreach (NCharacterSelectButton button in buttons)
+            {
+                AccessTools.Method(typeof(NCharacterSelectButton), "RefreshState")?.Invoke(button, Array.Empty<object>());
+            }
+
+            AccessTools.Field(typeof(NCharacterSelectScreen), "_selectedButton")?.SetValue(ActiveCharacterSelectScreen, selectedButton);
         }
         catch (Exception exception)
         {

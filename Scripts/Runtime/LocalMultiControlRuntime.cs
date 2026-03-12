@@ -211,6 +211,7 @@ internal static class LocalMultiControlRuntime
 
             hand.ForceRefreshCardIndices();
             RefreshCombatEnergyUi(combatUi, player);
+            ReevaluateEndTurnButtonState(combatUi, combatState);
             LocalMultiControlLogger.Info($"战斗UI已刷新到当前角色 {playerId}，手牌数量={handPile.Cards.Count}");
         }
         catch (Exception exception)
@@ -302,5 +303,22 @@ internal static class LocalMultiControlRuntime
         }
 
         deckButton.Initialize(player);
+    }
+
+    private static void ReevaluateEndTurnButtonState(NCombatUi combatUi, CombatState combatState)
+    {
+        if (combatState.CurrentSide != CombatSide.Player)
+        {
+            return;
+        }
+
+        try
+        {
+            AccessTools.Method(typeof(NEndTurnButton), "OnTurnStarted")?.Invoke(combatUi.EndTurnButton, new object[] { combatState });
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"刷新回合结束按钮状态失败: {exception.Message}");
+        }
     }
 }
