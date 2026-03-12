@@ -152,6 +152,12 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
+        if (CombatManager.Instance.AllPlayersReadyToEndTurn())
+        {
+            LocalMultiControlLogger.Info("所有角色均已结束回合，跳过自动切换，等待敌方回合推进。");
+            return;
+        }
+
         LocalMultiControlLogger.Info($"检测到角色 {endedPlayerId} 结束回合，自动切换到下一位。");
         Callable.From(delegate
         {
@@ -314,6 +320,13 @@ internal static class LocalMultiControlRuntime
 
         try
         {
+            Player? currentPlayer = combatState.GetPlayer(LocalContext.NetId ?? 0);
+            if (currentPlayer != null)
+            {
+                bool shouldDisable = CombatManager.Instance.IsPlayerReadyToEndTurn(currentPlayer);
+                AccessTools.PropertySetter(typeof(CombatManager), "PlayerActionsDisabled")?.Invoke(CombatManager.Instance, new object[] { shouldDisable });
+            }
+
             AccessTools.Method(typeof(NEndTurnButton), "OnTurnStarted")?.Invoke(combatUi.EndTurnButton, new object[] { combatState });
         }
         catch (Exception exception)

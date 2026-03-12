@@ -3,9 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
-using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Events;
-using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -17,7 +14,7 @@ internal static class EventSynchronizerPatch
     [HarmonyPostfix]
     private static void Postfix(EventSynchronizer __instance, int index)
     {
-        if (!LocalSelfCoopContext.IsEnabled)
+        if (!LocalSelfCoopContext.IsEnabled || !__instance.IsShared)
         {
             return;
         }
@@ -31,7 +28,8 @@ internal static class EventSynchronizerPatch
             }
 
             IPlayerCollection? playerCollection = AccessTools.Field(typeof(EventSynchronizer), "_playerCollection")?.GetValue(__instance) as IPlayerCollection;
-            if (playerCollection == null || playerCollection.Players.Count != 2)
+            List<uint?>? votes = AccessTools.Field(typeof(EventSynchronizer), "_playerVotes")?.GetValue(__instance) as List<uint?>;
+            if (playerCollection == null || votes == null || playerCollection.Players.Count != 2 || votes.Count < 2)
             {
                 return;
             }
@@ -44,33 +42,16 @@ internal static class EventSynchronizerPatch
             }
 
             int otherSlot = (localSlot + 1) % 2;
-            Player otherPlayer = playerCollection.Players[otherSlot];
-            if (__instance.IsShared)
+            if (votes[otherSlot].HasValue)
             {
-                List<uint?>? votes = AccessTools.Field(typeof(EventSynchronizer), "_playerVotes")?.GetValue(__instance) as List<uint?>;
-                if (votes == null || votes.Count < 2 || votes[otherSlot].HasValue)
-                {
-                    return;
-                }
-
-                votes[otherSlot] = (uint)index;
-                LocalMultiControlLogger.Info($"事件自动代投: slot{otherSlot} -> option={index}");
-                if (votes.All((vote) => vote.HasValue) && netService.Type != NetGameType.Client)
-                {
-                    AccessTools.Method(typeof(EventSynchronizer), "ChooseSharedEventOption")?.Invoke(__instance, Array.Empty<object>());
-                }
+                return;
             }
-            else
-            {
-                EventModel otherEvent = __instance.GetEventForPlayer(otherPlayer);
-                if (otherEvent.IsFinished || otherEvent.CurrentOptions.Count <= 0)
-                {
-                    return;
-                }
 
-                int mirroredIndex = Math.Clamp(index, 0, otherEvent.CurrentOptions.Count - 1);
-                AccessTools.Method(typeof(EventSynchronizer), "ChooseOptionForEvent")?.Invoke(__instance, new object[] { otherPlayer, mirroredIndex });
-                LocalMultiControlLogger.Info($"事件自动代选: player={otherPlayer.NetId}, option={mirroredIndex}");
+            votes[otherSlot] = (uint)index;
+            LocalMultiControlLogger.Info($"事件自动代投: slot{otherSlot} -> option={index}");
+            if (votes.All((vote) => vote.HasValue) && netService.Type != NetGameType.Client)
+            {
+                AccessTools.Method(typeof(EventSynchronizer), "ChooseSharedEventOption")?.Invoke(__instance, Array.Empty<object>());
             }
         }
         catch (Exception exception)
