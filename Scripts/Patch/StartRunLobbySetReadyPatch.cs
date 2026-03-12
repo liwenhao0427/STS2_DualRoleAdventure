@@ -34,6 +34,10 @@ internal static class StartRunLobbySetReadyPatch
             LocalMultiControlLogger.Info("本地双人模式自动就绪：已将全部玩家标记为 ready。");
         }
 
-        // BeginRunIfAllPlayersReady 由原始 SetReady 流程负责调用，这里不重复触发，避免开局被执行两次。
+        bool beginningRun = AccessTools.Field(typeof(StartRunLobby), "_beginningRun")?.GetValue(__instance) as bool? ?? false;
+        if (!beginningRun)
+        {
+            AccessTools.Method(typeof(StartRunLobby), "BeginRunIfAllPlayersReady")?.Invoke(__instance, new object[] { });
+        }
     }
 }

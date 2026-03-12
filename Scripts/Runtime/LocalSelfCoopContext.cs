@@ -28,6 +28,8 @@ internal static class LocalSelfCoopContext
 
     public static NCharacterSelectScreen? ActiveCharacterSelectScreen { get; set; }
 
+    private static bool _isSyncingCharacterHighlight;
+
     public static ulong ResolvePrimaryPlayerId()
     {
         ulong localPlatformPlayerId = PlatformUtil.GetLocalPlayerId(PlatformUtil.PrimaryPlatform);
@@ -100,13 +102,14 @@ internal static class LocalSelfCoopContext
 
     private static void SyncCharacterSelectHighlight()
     {
-        if (ActiveCharacterSelectScreen == null)
+        if (ActiveCharacterSelectScreen == null || _isSyncingCharacterHighlight)
         {
             return;
         }
 
         try
         {
+            _isSyncingCharacterHighlight = true;
             LobbyPlayer localPlayer = ActiveCharacterSelectScreen.Lobby.LocalPlayer;
             Control? charButtonContainer = AccessTools.Field(typeof(NCharacterSelectScreen), "_charButtonContainer")?.GetValue(ActiveCharacterSelectScreen) as Control;
             if (charButtonContainer == null)
@@ -127,10 +130,23 @@ internal static class LocalSelfCoopContext
             }
 
             AccessTools.Field(typeof(NCharacterSelectScreen), "_selectedButton")?.SetValue(ActiveCharacterSelectScreen, selectedButton);
+            if (selectedButton != null)
+            {
+                ActiveCharacterSelectScreen.SelectCharacter(selectedButton, selectedButton.Character);
+            }
+
+            foreach (LobbyPlayer player in ActiveCharacterSelectScreen.Lobby.Players)
+            {
+                AccessTools.Method(typeof(NCharacterSelectScreen), "RefreshButtonSelectionForPlayer")?.Invoke(ActiveCharacterSelectScreen, new object[] { player });
+            }
         }
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"同步角色选择高亮失败: {exception.Message}");
+        }
+        finally
+        {
+            _isSyncingCharacterHighlight = false;
         }
     }
 
