@@ -85,6 +85,19 @@ internal static class LocalSelfCoopContext
         return true;
     }
 
+    public static void NotifyCharacterSelectPlayerChanged(ulong playerId)
+    {
+        if (!IsEnabled)
+        {
+            return;
+        }
+
+        if (playerId == CurrentLobbyEditingPlayerId)
+        {
+            SyncCharacterSelectHighlight();
+        }
+    }
+
     private static void SyncCharacterSelectHighlight()
     {
         if (ActiveCharacterSelectScreen == null)

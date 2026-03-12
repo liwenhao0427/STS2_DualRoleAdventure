@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
@@ -9,11 +10,14 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.Core.Nodes.TopBar;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Runs;
+using Godot;
 
 namespace LocalMultiControl.Scripts.Runtime;
 
@@ -91,6 +95,7 @@ internal static class LocalMultiControlRuntime
         LocalSelfCoopContext.NetService?.SetCurrentSenderId(currentControlledPlayerId.Value);
         SyncRunSynchronizerLocalPlayerId(currentControlledPlayerId.Value);
         RefreshCombatUiForControlledPlayer(currentControlledPlayerId.Value);
+        RefreshTopBarForControlledPlayer(currentControlledPlayerId.Value);
         LocalMultiControlLogger.Info($"控制上下文已更新: {previousNetId?.ToString() ?? "null"} -> {currentControlledPlayerId.Value}, source={source}");
         if (source != "run-launched")
         {
@@ -148,7 +153,10 @@ internal static class LocalMultiControlRuntime
         }
 
         LocalMultiControlLogger.Info($"检测到角色 {endedPlayerId} 结束回合，自动切换到下一位。");
-        SwitchNextControlledPlayer("auto-end-turn");
+        Callable.From(delegate
+        {
+            SwitchNextControlledPlayer("auto-end-turn");
+        }).CallDeferred();
     }
 
     private static void RefreshCombatUiForControlledPlayer(ulong playerId)
@@ -202,11 +210,97 @@ internal static class LocalMultiControlRuntime
             }
 
             hand.ForceRefreshCardIndices();
+            RefreshCombatEnergyUi(combatUi, player);
             LocalMultiControlLogger.Info($"战斗UI已刷新到当前角色 {playerId}，手牌数量={handPile.Cards.Count}");
         }
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"刷新战斗UI失败: {exception.Message}");
         }
+    }
+
+    private static void RefreshCombatEnergyUi(NCombatUi combatUi, Player player)
+    {
+        NStarCounter? starCounter = AccessTools.Field(typeof(NCombatUi), "_starCounter")?.GetValue(combatUi) as NStarCounter;
+        NEnergyCounter? oldEnergyCounter = AccessTools.Field(typeof(NCombatUi), "_energyCounter")?.GetValue(combatUi) as NEnergyCounter;
+
+        if (starCounter != null)
+        {
+            Player? previousPlayer = AccessTools.Field(typeof(NStarCounter), "_player")?.GetValue(starCounter) as Player;
+            if (previousPlayer != null)
+            {
+                MethodInfo? onStarsChangedMethod = AccessTools.Method(typeof(NStarCounter), "OnStarsChanged");
+                if (onStarsChangedMethod != null)
+                {
+                    Action<int, int> onStarsChanged = (Action<int, int>)onStarsChangedMethod.CreateDelegate(typeof(Action<int, int>), starCounter);
+                    if (previousPlayer.PlayerCombatState != null)
+                    {
+                        previousPlayer.PlayerCombatState.StarsChanged -= onStarsChanged;
+                    }
+                }
+            }
+
+            starCounter.Initialize(player);
+        }
+
+        if (oldEnergyCounter != null)
+        {
+            oldEnergyCounter.QueueFreeSafely();
+        }
+
+        NEnergyCounter? newEnergyCounter = NEnergyCounter.Create(player);
+        if (newEnergyCounter != null)
+        {
+            combatUi.EnergyCounterContainer.AddChildSafely(newEnergyCounter);
+            starCounter?.Reparent(newEnergyCounter);
+            AccessTools.Field(typeof(NCombatUi), "_energyCounter")?.SetValue(combatUi, newEnergyCounter);
+        }
+    }
+
+    private static void RefreshTopBarForControlledPlayer(ulong playerId)
+    {
+        NTopBar? topBar = NRun.Instance?.GlobalUi?.TopBar;
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
+        if (topBar == null || runState == null)
+        {
+            return;
+        }
+
+        Player? player = runState.GetPlayer(playerId);
+        if (player == null)
+        {
+            return;
+        }
+
+        try
+        {
+            RefreshTopBarDeck(topBar.Deck, player);
+            topBar.Gold.Initialize(player);
+            topBar.Hp.Initialize(player);
+            foreach (Node child in topBar.Portrait.GetChildren())
+            {
+                child.QueueFreeSafely();
+            }
+
+            topBar.Portrait.Initialize(player);
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"刷新顶部栏失败: {exception.Message}");
+        }
+    }
+
+    private static void RefreshTopBarDeck(NTopBarDeckButton deckButton, Player player)
+    {
+        CardPile? oldPile = AccessTools.Field(typeof(NTopBarDeckButton), "_pile")?.GetValue(deckButton) as CardPile;
+        MethodInfo? updateMethod = AccessTools.Method(typeof(NTopBarDeckButton), "OnPileContentsChanged");
+        if (oldPile != null && updateMethod != null)
+        {
+            Action updateHandler = (Action)Delegate.CreateDelegate(typeof(Action), deckButton, updateMethod);
+            oldPile.CardAddFinished -= updateHandler;
+            oldPile.CardRemoveFinished -= updateHandler;
+        }
+
+        deckButton.Initialize(player);
     }
 }

@@ -1,4 +1,3 @@
-using System;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
@@ -35,6 +34,6 @@ internal static class StartRunLobbySetReadyPatch
             LocalMultiControlLogger.Info("本地双人模式自动就绪：已将全部玩家标记为 ready。");
         }
 
-        AccessTools.Method(typeof(StartRunLobby), "BeginRunIfAllPlayersReady")?.Invoke(__instance, Array.Empty<object>());
+        // BeginRunIfAllPlayersReady 由原始 SetReady 流程负责调用，这里不重复触发，避免开局被执行两次。
     }
 }
