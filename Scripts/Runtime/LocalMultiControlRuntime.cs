@@ -1,3 +1,4 @@
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Runtime;
@@ -14,7 +15,7 @@ internal static class LocalMultiControlRuntime
         Session.InitializeFromRunState(runState);
         if (Session.CurrentControlledPlayerId.HasValue)
         {
-            LocalMultiControlLogger.Info($"当前操控玩家已设定为: {Session.CurrentControlledPlayerId.Value}");
+            ApplyControlContext("run-launched");
         }
         else
         {
@@ -27,5 +28,45 @@ internal static class LocalMultiControlRuntime
         Session.Reset("RunManager.CleanUp");
         LocalSelfCoopContext.Disable("RunManager.CleanUp");
         LocalMultiControlLogger.Info("RunManager.CleanUp 后已完成本地多控会话清理。");
+    }
+
+    public static void SwitchNextControlledPlayer(string source)
+    {
+        if (!RunManager.Instance.IsInProgress)
+        {
+            return;
+        }
+
+        if (Session.SwitchNextPlayer())
+        {
+            ApplyControlContext(source);
+        }
+    }
+
+    public static void SwitchPreviousControlledPlayer(string source)
+    {
+        if (!RunManager.Instance.IsInProgress)
+        {
+            return;
+        }
+
+        if (Session.SwitchPreviousPlayer())
+        {
+            ApplyControlContext(source);
+        }
+    }
+
+    private static void ApplyControlContext(string source)
+    {
+        ulong? currentControlledPlayerId = Session.CurrentControlledPlayerId;
+        if (!currentControlledPlayerId.HasValue)
+        {
+            return;
+        }
+
+        ulong? previousNetId = LocalContext.NetId;
+        LocalContext.NetId = currentControlledPlayerId.Value;
+        LocalSelfCoopContext.NetService?.SetCurrentSenderId(currentControlledPlayerId.Value);
+        LocalMultiControlLogger.Info($"控制上下文已更新: {previousNetId?.ToString() ?? "null"} -> {currentControlledPlayerId.Value}, source={source}");
     }
 }
