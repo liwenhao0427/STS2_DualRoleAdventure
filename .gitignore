@@ -1,0 +1,17 @@
+# Godot generated
+.godot/
+.import/
+
+# .NET build outputs
+bin/
+obj/
+
+# Local export artifact
+LocalMultiControl.pck
+
+# IDE/user files
+.vs/
+.idea/
+*.user
+*.suo
+*.tmp

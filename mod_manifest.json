@@ -1,0 +1,7 @@
+{
+  "pck_name": "localmulticontrol",
+  "name": "Local Multi Control",
+  "author": "磁石战士Ω",
+  "description": "将联机控制逻辑适配为本地多控的基础 Mod 框架",
+  "version": "0.0.1"
+}
