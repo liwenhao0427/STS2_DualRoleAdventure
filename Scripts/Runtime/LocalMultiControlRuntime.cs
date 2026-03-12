@@ -15,6 +15,12 @@ internal static class LocalMultiControlRuntime
     public static void OnRunLaunched(RunState runState)
     {
         LocalMultiControlLogger.Info("检测到 RunManager.Launch，开始初始化本地多控会话。");
+        if (LocalSelfCoopContext.IsEnabled)
+        {
+            RunManager.Instance.CombatStateSynchronizer.IsDisabled = true;
+            LocalMultiControlLogger.Info("本地双人模式已禁用战斗同步等待，避免单进程回环阻塞。");
+        }
+
         Session.InitializeFromRunState(runState);
         if (Session.CurrentControlledPlayerId.HasValue)
         {

@@ -2,6 +2,7 @@ using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Patch;
 
@@ -21,12 +22,26 @@ internal static class NGameInputPatch
         if (keycode == Key.Bracketleft || physicalKeycode == Key.Bracketleft)
         {
             LocalMultiControlLogger.Info("检测到切换热键: [");
-            LocalMultiControlRuntime.SwitchPreviousControlledPlayer("hotkey:[");
+            if (RunManager.Instance.IsInProgress)
+            {
+                LocalMultiControlRuntime.SwitchPreviousControlledPlayer("hotkey:[");
+            }
+            else
+            {
+                LocalSelfCoopContext.SwitchLobbyEditingPlayer(next: false);
+            }
         }
-        else if (keycode == Key.Bracketright || physicalKeycode == Key.Bracketright)
+        else if (keycode == Key.Bracketright || physicalKeycode == Key.Bracketright || keycode == Key.Slash || physicalKeycode == Key.Slash)
         {
-            LocalMultiControlLogger.Info("检测到切换热键: ]");
-            LocalMultiControlRuntime.SwitchNextControlledPlayer("hotkey:]");
+            LocalMultiControlLogger.Info("检测到切换热键: ]/");
+            if (RunManager.Instance.IsInProgress)
+            {
+                LocalMultiControlRuntime.SwitchNextControlledPlayer("hotkey:]/");
+            }
+            else
+            {
+                LocalSelfCoopContext.SwitchLobbyEditingPlayer(next: true);
+            }
         }
     }
 }

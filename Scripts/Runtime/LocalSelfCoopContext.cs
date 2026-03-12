@@ -1,7 +1,11 @@
 using System.Linq;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
+using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Platform;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Unlocks;
 
@@ -16,6 +20,8 @@ internal static class LocalSelfCoopContext
     public static bool IsEnabled { get; private set; }
 
     public static LocalLoopbackHostGameService? NetService { get; private set; }
+
+    public static ulong CurrentLobbyEditingPlayerId { get; private set; } = 1;
 
     public static ulong ResolvePrimaryPlayerId()
     {
@@ -35,6 +41,8 @@ internal static class LocalSelfCoopContext
     {
         IsEnabled = true;
         NetService = netService;
+        CurrentLobbyEditingPlayerId = PrimaryPlayerId;
+        LocalContext.NetId = PrimaryPlayerId;
         LocalMultiControlLogger.Info("本地双人联机模式已启用。");
     }
 
@@ -48,6 +56,25 @@ internal static class LocalSelfCoopContext
         LocalMultiControlLogger.Info($"本地双人联机模式已关闭，原因: {reason}");
         IsEnabled = false;
         NetService = null;
+        CurrentLobbyEditingPlayerId = PrimaryPlayerId;
+    }
+
+    public static bool SwitchLobbyEditingPlayer(bool next)
+    {
+        if (!IsEnabled || NetService == null)
+        {
+            return false;
+        }
+
+        ulong previous = CurrentLobbyEditingPlayerId;
+        CurrentLobbyEditingPlayerId = next
+            ? (CurrentLobbyEditingPlayerId == PrimaryPlayerId ? SecondaryPlayerId : PrimaryPlayerId)
+            : (CurrentLobbyEditingPlayerId == PrimaryPlayerId ? SecondaryPlayerId : PrimaryPlayerId);
+        NetService.SetCurrentSenderId(CurrentLobbyEditingPlayerId);
+        LocalContext.NetId = CurrentLobbyEditingPlayerId;
+        LocalMultiControlLogger.Info($"大厅编辑角色切换: {previous} -> {CurrentLobbyEditingPlayerId}");
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"大厅编辑角色: {CurrentLobbyEditingPlayerId}"));
+        return true;
     }
 
     public static bool BootstrapSecondPlayer(NCharacterSelectScreen characterSelectScreen)
