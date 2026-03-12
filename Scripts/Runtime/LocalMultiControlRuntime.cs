@@ -6,6 +6,7 @@ using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -16,6 +17,7 @@ using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.TopBar;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 using Godot;
 
@@ -96,6 +98,7 @@ internal static class LocalMultiControlRuntime
         SyncRunSynchronizerLocalPlayerId(currentControlledPlayerId.Value);
         RefreshCombatUiForControlledPlayer(currentControlledPlayerId.Value);
         RefreshTopBarForControlledPlayer(currentControlledPlayerId.Value);
+        RefreshEventRoomForControlledPlayer(currentControlledPlayerId.Value);
         LocalMultiControlLogger.Info($"控制上下文已更新: {previousNetId?.ToString() ?? "null"} -> {currentControlledPlayerId.Value}, source={source}");
         if (source != "run-launched")
         {
@@ -309,6 +312,66 @@ internal static class LocalMultiControlRuntime
         }
 
         deckButton.Initialize(player);
+    }
+
+    private static void RefreshEventRoomForControlledPlayer(ulong playerId)
+    {
+        NEventRoom? eventRoom = NEventRoom.Instance;
+        EventSynchronizer synchronizer = RunManager.Instance.EventSynchronizer;
+        if (eventRoom == null || synchronizer.IsShared)
+        {
+            return;
+        }
+
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
+        Player? player = runState?.GetPlayer(playerId);
+        if (player == null)
+        {
+            return;
+        }
+
+        EventModel targetEvent = synchronizer.GetEventForPlayer(player);
+        EventModel? currentEvent = AccessTools.Field(typeof(NEventRoom), "_event")?.GetValue(eventRoom) as EventModel;
+        if (currentEvent == null || currentEvent == targetEvent)
+        {
+            return;
+        }
+
+        try
+        {
+            Action<EventModel> refreshHandler = (Action<EventModel>)AccessTools.Method(typeof(NEventRoom), "RefreshEventState")!
+                .CreateDelegate(typeof(Action<EventModel>), eventRoom);
+            Action enteringCombatHandler = (Action)AccessTools.Method(typeof(NEventRoom), "OnEnteringEventCombat")!
+                .CreateDelegate(typeof(Action), eventRoom);
+            Func<EventOption, Task> beforeChosenHandler = (Func<EventOption, Task>)AccessTools.Method(typeof(NEventRoom), "BeforeOptionChosen")!
+                .CreateDelegate(typeof(Func<EventOption, Task>), eventRoom);
+
+            currentEvent.StateChanged -= refreshHandler;
+            currentEvent.EnteringEventCombat -= enteringCombatHandler;
+
+            List<EventOption>? connectedOptions = AccessTools.Field(typeof(NEventRoom), "_connectedOptions")?.GetValue(eventRoom) as List<EventOption>;
+            if (connectedOptions != null)
+            {
+                foreach (EventOption option in connectedOptions)
+                {
+                    option.BeforeChosen -= beforeChosenHandler;
+                }
+
+                connectedOptions.Clear();
+            }
+
+            AccessTools.Field(typeof(NEventRoom), "_event")?.SetValue(eventRoom, targetEvent);
+            targetEvent.StateChanged += refreshHandler;
+            targetEvent.EnteringEventCombat += enteringCombatHandler;
+
+            AccessTools.Method(typeof(NEventRoom), "SetTitle")?.Invoke(eventRoom, new object[] { targetEvent.Title });
+            AccessTools.Method(typeof(NEventRoom), "RefreshEventState")?.Invoke(eventRoom, new object[] { targetEvent });
+            LocalMultiControlLogger.Info($"非共享事件视图已切换到玩家 {playerId}");
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"切换非共享事件视图失败: {exception.Message}");
+        }
     }
 
     private static void ReevaluateEndTurnButtonState(NCombatUi combatUi, CombatState combatState)
