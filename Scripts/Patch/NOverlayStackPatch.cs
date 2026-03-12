@@ -1,3 +1,4 @@
+using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
@@ -21,6 +22,9 @@ internal static class NOverlayStackPatch
             return;
         }
 
-        LocalMultiControlRuntime.TryRunPendingEventAutoSwitch("event-auto-next");
+        Callable.From(delegate
+        {
+            LocalMultiControlRuntime.TryRunPendingEventAutoSwitch("event-auto-next");
+        }).CallDeferred();
     }
 }

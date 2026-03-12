@@ -5,6 +5,7 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Helpers;
@@ -65,6 +66,12 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
+        if (CombatManager.Instance.IsInProgress && RunManager.Instance.ActionQueueSynchronizer.CombatState != ActionSynchronizerCombatState.PlayPhase)
+        {
+            LocalMultiControlLogger.Info($"忽略切换请求({source})：当前不在可操作出牌阶段。");
+            return;
+        }
+
         if (Session.SwitchNextPlayer())
         {
             ApplyControlContext(source);
@@ -78,6 +85,12 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
+        if (CombatManager.Instance.IsInProgress && RunManager.Instance.ActionQueueSynchronizer.CombatState != ActionSynchronizerCombatState.PlayPhase)
+        {
+            LocalMultiControlLogger.Info($"忽略切换请求({source})：当前不在可操作出牌阶段。");
+            return;
+        }
+
         if (Session.SwitchPreviousPlayer())
         {
             ApplyControlContext(source);
@@ -88,6 +101,12 @@ internal static class LocalMultiControlRuntime
     {
         if (!RunManager.Instance.IsInProgress)
         {
+            return;
+        }
+
+        if (CombatManager.Instance.IsInProgress && RunManager.Instance.ActionQueueSynchronizer.CombatState != ActionSynchronizerCombatState.PlayPhase)
+        {
+            LocalMultiControlLogger.Info($"忽略指定切换请求({source})：当前不在可操作出牌阶段。");
             return;
         }
 
@@ -316,6 +335,8 @@ internal static class LocalMultiControlRuntime
             }
 
             topBar.Portrait.Initialize(player);
+            topBar.PotionContainer.Initialize(runState);
+            NRun.Instance?.GlobalUi?.RelicInventory.Initialize(runState);
         }
         catch (Exception exception)
         {
@@ -411,9 +432,18 @@ internal static class LocalMultiControlRuntime
             {
                 bool shouldDisable = CombatManager.Instance.IsPlayerReadyToEndTurn(currentPlayer);
                 AccessTools.PropertySetter(typeof(CombatManager), "PlayerActionsDisabled")?.Invoke(CombatManager.Instance, new object[] { shouldDisable });
+
+                Type? stateType = AccessTools.Inner(typeof(NEndTurnButton), "State");
+                MethodInfo? setStateMethod = AccessTools.Method(typeof(NEndTurnButton), "SetState");
+                if (stateType != null && setStateMethod != null)
+                {
+                    bool canTakeAction = !shouldDisable;
+                    object stateValue = Enum.ToObject(stateType, canTakeAction ? 0 : 1);
+                    setStateMethod.Invoke(combatUi.EndTurnButton, new object[] { stateValue });
+                }
             }
 
-            AccessTools.Method(typeof(NEndTurnButton), "OnTurnStarted")?.Invoke(combatUi.EndTurnButton, new object[] { combatState });
+            combatUi.EndTurnButton.RefreshEnabled();
         }
         catch (Exception exception)
         {
