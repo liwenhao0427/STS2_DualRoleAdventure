@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Helpers;
 
 namespace LocalMultiControl.Scripts.Patch;
 
@@ -43,8 +45,14 @@ internal static class CombatManagerReadyEnemyTurnPatch
         try
         {
             _isMirroring = true;
-            __instance.SetReadyToBeginEnemyTurn(otherPlayer, actionDuringEnemyTurn);
+            readySet.Add(otherPlayer);
             LocalMultiControlLogger.Info($"本地双人模式自动补齐敌方回合就绪: {player.NetId} + {otherPlayer.NetId}");
+
+            MethodInfo? afterAllReadyMethod = AccessTools.Method(typeof(CombatManager), "AfterAllPlayersReadyToBeginEnemyTurn");
+            if (afterAllReadyMethod?.Invoke(__instance, new object?[] { actionDuringEnemyTurn }) is Task task)
+            {
+                TaskHelper.RunSafely(task);
+            }
         }
         finally
         {

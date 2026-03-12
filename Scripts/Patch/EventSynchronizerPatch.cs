@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -14,8 +15,20 @@ internal static class EventSynchronizerPatch
     [HarmonyPostfix]
     private static void Postfix(EventSynchronizer __instance, int index)
     {
-        if (!LocalSelfCoopContext.IsEnabled || !__instance.IsShared)
+        if (!LocalSelfCoopContext.IsEnabled)
         {
+            return;
+        }
+
+        if (!__instance.IsShared)
+        {
+            Callable.From(delegate
+            {
+                if (RunManager.Instance.IsInProgress)
+                {
+                    LocalMultiControlRuntime.SwitchNextControlledPlayer("event-auto-next");
+                }
+            }).CallDeferred();
             return;
         }
 
