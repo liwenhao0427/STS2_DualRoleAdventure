@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -22,13 +21,12 @@ internal static class EventSynchronizerPatch
 
         if (!__instance.IsShared)
         {
-            Callable.From(delegate
+            ulong currentPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId ?? 0;
+            if (currentPlayerId != 0)
             {
-                if (RunManager.Instance.IsInProgress)
-                {
-                    LocalMultiControlRuntime.SwitchNextControlledPlayer("event-auto-next");
-                }
-            }).CallDeferred();
+                LocalSelfCoopContext.RequestEventAutoSwitchAfterChoice(currentPlayerId);
+            }
+
             return;
         }
 

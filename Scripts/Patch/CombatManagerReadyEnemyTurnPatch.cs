@@ -1,25 +1,21 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Helpers;
 
 namespace LocalMultiControl.Scripts.Patch;
 
 [HarmonyPatch(typeof(CombatManager), nameof(CombatManager.SetReadyToBeginEnemyTurn))]
 internal static class CombatManagerReadyEnemyTurnPatch
 {
-    private static bool _isMirroring;
-
-    [HarmonyPostfix]
-    private static void Postfix(CombatManager __instance, Player player, Func<Task>? actionDuringEnemyTurn)
+    [HarmonyPrefix]
+    private static void Prefix(CombatManager __instance, Player player, Func<Task>? actionDuringEnemyTurn)
     {
-        if (!LocalSelfCoopContext.IsEnabled || _isMirroring)
+        if (!LocalSelfCoopContext.IsEnabled)
         {
             return;
         }
@@ -42,21 +38,7 @@ internal static class CombatManagerReadyEnemyTurnPatch
             return;
         }
 
-        try
-        {
-            _isMirroring = true;
-            readySet.Add(otherPlayer);
-            LocalMultiControlLogger.Info($"本地双人模式自动补齐敌方回合就绪: {player.NetId} + {otherPlayer.NetId}");
-
-            MethodInfo? afterAllReadyMethod = AccessTools.Method(typeof(CombatManager), "AfterAllPlayersReadyToBeginEnemyTurn");
-            if (afterAllReadyMethod?.Invoke(__instance, new object?[] { actionDuringEnemyTurn }) is Task task)
-            {
-                TaskHelper.RunSafely(task);
-            }
-        }
-        finally
-        {
-            _isMirroring = false;
-        }
+        readySet.Add(otherPlayer);
+        LocalMultiControlLogger.Info($"本地双人模式自动补齐敌方回合就绪: {player.NetId} + {otherPlayer.NetId}");
     }
 }

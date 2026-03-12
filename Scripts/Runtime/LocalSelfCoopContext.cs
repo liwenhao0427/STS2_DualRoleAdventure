@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Unlocks;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Models;
 
 namespace LocalMultiControl.Scripts.Runtime;
 
@@ -30,6 +31,8 @@ internal static class LocalSelfCoopContext
     public static NCharacterSelectScreen? ActiveCharacterSelectScreen { get; set; }
 
     private static bool _isSyncingCharacterHighlight;
+
+    private static ulong? _pendingEventAutoSwitchPlayerId;
 
     public static ulong ResolvePrimaryPlayerId()
     {
@@ -66,6 +69,7 @@ internal static class LocalSelfCoopContext
         NetService = null;
         CurrentLobbyEditingPlayerId = PrimaryPlayerId;
         ActiveCharacterSelectScreen = null;
+        _pendingEventAutoSwitchPlayerId = null;
     }
 
     public static bool SwitchLobbyEditingPlayer(bool next)
@@ -99,6 +103,33 @@ internal static class LocalSelfCoopContext
         {
             SyncCharacterSelectHighlight();
         }
+    }
+
+    public static void RequestEventAutoSwitchAfterChoice(ulong playerId)
+    {
+        if (!IsEnabled)
+        {
+            return;
+        }
+
+        _pendingEventAutoSwitchPlayerId = playerId;
+        LocalMultiControlLogger.Info($"记录事件自动切换请求: player={playerId}");
+    }
+
+    public static bool ShouldAutoSwitchAfterEventState(EventModel eventModel)
+    {
+        if (!IsEnabled || !_pendingEventAutoSwitchPlayerId.HasValue || eventModel.Owner == null)
+        {
+            return false;
+        }
+
+        if (!eventModel.IsFinished || eventModel.Owner.NetId != _pendingEventAutoSwitchPlayerId.Value)
+        {
+            return false;
+        }
+
+        _pendingEventAutoSwitchPlayerId = null;
+        return true;
     }
 
     private static void SyncCharacterSelectHighlight()
