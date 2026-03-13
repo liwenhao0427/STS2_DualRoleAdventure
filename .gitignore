@@ -8,6 +8,7 @@ obj/
 
 # Local export artifact
 LocalMultiControl.pck
+DualRoleAdventure.dll
 
 # IDE/user files
 .vs/
