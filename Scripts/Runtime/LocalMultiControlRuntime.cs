@@ -18,9 +18,11 @@ using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.TopBar;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 using Godot;
+using MegaCrit.Sts2.Core.Commands;
 
 namespace LocalMultiControl.Scripts.Runtime;
 
@@ -29,6 +31,11 @@ internal static class LocalMultiControlRuntime
     private static readonly LocalMultiSessionState Session = new LocalMultiSessionState();
 
     private static readonly HashSet<string> _fieldSyncFailures = new HashSet<string>();
+
+    public static bool HasDualAdventureStarterRelic(Player player)
+    {
+        return player.GetRelic<WongoCustomerAppreciationBadge>() != null;
+    }
 
     public static LocalMultiSessionState SessionState => Session;
 
@@ -42,6 +49,7 @@ internal static class LocalMultiControlRuntime
         }
 
         Session.InitializeFromRunState(runState);
+        EnsureDualAdventureStarterRelic(runState);
         if (Session.CurrentControlledPlayerId.HasValue)
         {
             ApplyControlContext("run-launched");
@@ -55,6 +63,7 @@ internal static class LocalMultiControlRuntime
     public static void OnRunCleanup()
     {
         Session.Reset("RunManager.CleanUp");
+        LocalMerchantInventoryRuntime.Clear();
         LocalSelfCoopContext.Disable("RunManager.CleanUp");
         LocalMultiControlLogger.Info("RunManager.CleanUp 后已完成本地多控会话清理。");
     }
@@ -141,6 +150,7 @@ internal static class LocalMultiControlRuntime
         RefreshCombatUiForControlledPlayer(currentControlledPlayerId.Value);
         RefreshTopBarForControlledPlayer(currentControlledPlayerId.Value);
         RefreshEventRoomForControlledPlayer(currentControlledPlayerId.Value);
+        LocalMerchantInventoryRuntime.RefreshShopRoomForPlayer(currentControlledPlayerId.Value);
         LocalMultiControlLogger.Info($"控制上下文已更新: {previousNetId?.ToString() ?? "null"} -> {currentControlledPlayerId.Value}, source={source}");
         if (source != "run-launched")
         {
@@ -451,5 +461,22 @@ internal static class LocalMultiControlRuntime
         {
             LocalMultiControlLogger.Warn($"刷新回合结束按钮状态失败: {exception.Message}");
         }
+    }
+
+    private static void EnsureDualAdventureStarterRelic(RunState runState)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode || runState.Players.Count != 2)
+        {
+            return;
+        }
+
+        if (runState.Players.Any(HasDualAdventureStarterRelic))
+        {
+            return;
+        }
+
+        Player grantPlayer = runState.GetPlayer(LocalSelfCoopContext.PrimaryPlayerId) ?? runState.Players[0];
+        TaskHelper.RunSafely(RelicCmd.Obtain(ModelDb.Relic<WongoCustomerAppreciationBadge>().ToMutable(), grantPlayer));
+        LocalMultiControlLogger.Info("已发放双角色冒险起始遗物：WongoCustomerAppreciationBadge。");
     }
 }

@@ -12,7 +12,7 @@ public partial class Entry
     public static void Init()
     {
         LocalMultiControlLogger.Info("开始初始化 Harmony 补丁。");
-        _harmony = new Harmony("sts2.localmulticontrol");
+        _harmony = new Harmony("sts2.dualroleadventure");
         _harmony.PatchAll();
         LocalMultiControlLogger.Info("Mod 初始化完成。");
     }

@@ -5,6 +5,8 @@
     <LangVersion>12.0</LangVersion>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>DualRoleAdventure</AssemblyName>
+    <RootNamespace>DualRoleAdventure</RootNamespace>
 
     <!-- 改成你的杀戮尖塔2目录 -->
     <Sts2Dir>E:\SteamLibrary\steamapps\common\Slay the Spire 2</Sts2Dir>

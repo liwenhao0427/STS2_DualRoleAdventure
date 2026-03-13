@@ -16,6 +16,11 @@ internal static class NEventRoomPatch
     [HarmonyPostfix]
     private static void Postfix(EventModel eventModel)
     {
+        if (LocalSelfCoopContext.UseSingleEventFlow)
+        {
+            return;
+        }
+
         if (!LocalSelfCoopContext.ShouldQueueEventAutoSwitchAfterEventState(eventModel))
         {
             return;
@@ -46,6 +51,11 @@ internal static class NEventRoomOptionButtonPatch
         // 已在实机验证：该拦截用于保证涅奥/非共享事件必须双角色都完成后才可 Proceed。
         // 这里是开局主流程稳定点，后续若需调整请先做日志回归，避免回归到“仅一人可选”。
         if (!LocalSelfCoopContext.IsEnabled || !option.IsProceed || !RunManager.Instance.IsInProgress)
+        {
+            return true;
+        }
+
+        if (LocalSelfCoopContext.UseSingleEventFlow)
         {
             return true;
         }

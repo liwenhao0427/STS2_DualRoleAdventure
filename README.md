@@ -1,6 +1,6 @@
-# LocalMultiControl
+# DualRoleAdventure
 
-LocalMultiControl 是一个《杀戮尖塔2》Mod 框架，目标是把联机控制体验适配为本地多控操作。
+DualRoleAdventure 是一个《杀戮尖塔2》Mod 分支，目标是实现单人双角色冒险模式。
 
 当前阶段仅初始化工程骨架，尚未添加具体功能逻辑。
 

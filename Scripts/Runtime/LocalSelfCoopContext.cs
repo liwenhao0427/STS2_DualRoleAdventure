@@ -19,6 +19,10 @@ namespace LocalMultiControl.Scripts.Runtime;
 
 internal static class LocalSelfCoopContext
 {
+    public static bool UseSingleAdventureMode => true;
+
+    public static bool UseSingleEventFlow => true;
+
     public static ulong PrimaryPlayerId { get; private set; } = 1;
 
     public static ulong SecondaryPlayerId { get; private set; } = 2;

@@ -19,6 +19,11 @@ internal static class EventSynchronizerPatch
             return;
         }
 
+        if (LocalSelfCoopContext.UseSingleEventFlow)
+        {
+            return;
+        }
+
         if (!__instance.IsShared)
         {
             ulong currentPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId ?? 0;

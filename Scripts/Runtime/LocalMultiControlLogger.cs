@@ -4,7 +4,7 @@ namespace LocalMultiControl.Scripts.Runtime;
 
 internal static class LocalMultiControlLogger
 {
-    private const string Prefix = "[LocalMultiControl]";
+    private const string Prefix = "[DualRoleAdventure]";
 
     public static void Info(string message)
     {
