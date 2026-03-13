@@ -17,7 +17,7 @@ internal static class NRelicInventoryPatch
     [HarmonyPatch(typeof(NRelicInventory), nameof(NRelicInventory.Initialize))]
     private static void PrefixInitialize(NRelicInventory __instance)
     {
-        if (!LocalSelfCoopContext.IsEnabled)
+        if (!LocalSelfCoopContext.IsEnabled || LocalSelfCoopContext.UseSingleAdventureMode)
         {
             return;
         }
@@ -48,6 +48,11 @@ internal static class NRelicInventoryPatch
     [HarmonyPrefix]
     private static bool Prefix(NRelicInventory __instance, RelicModel relic, Godot.Vector2? startPosition = null, Godot.Vector2? startScale = null)
     {
+        if (LocalSelfCoopContext.UseSingleAdventureMode)
+        {
+            return true;
+        }
+
         if (!LocalContext.IsMine(relic))
         {
             return false;

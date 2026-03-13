@@ -11,7 +11,7 @@ internal static class NCombatRoomPatch
     [HarmonyPostfix]
     private static void Postfix(CombatState state)
     {
-        if (!LocalSelfCoopContext.IsEnabled || state.RoundNumber != 1)
+        if (!LocalSelfCoopContext.IsEnabled)
         {
             return;
         }

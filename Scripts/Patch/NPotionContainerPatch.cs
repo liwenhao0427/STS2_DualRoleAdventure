@@ -7,7 +7,6 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Potions;
-using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Patch;
 
@@ -16,7 +15,7 @@ internal static class NPotionContainerPatch
 {
     [HarmonyPrefix]
     [HarmonyPatch(typeof(NPotionContainer), nameof(NPotionContainer.Initialize))]
-    private static void PrefixInitialize(NPotionContainer __instance, IRunState _)
+    private static void PrefixInitialize(NPotionContainer __instance)
     {
         if (!LocalSelfCoopContext.IsEnabled)
         {

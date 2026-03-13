@@ -1,5 +1,4 @@
 using System.Threading.Tasks;
-using System.Linq;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Commands;
@@ -45,25 +44,6 @@ internal static class RewardsCmdPatch
             rewardsSet = new RewardsSet(rewardPlayer).WithRewardsFromRoom(combatRoom);
         }
 
-        TryAppendSecondaryPoolCardReward(rewardsSet, rewardPlayer, runState, combatRoom);
         await rewardsSet.Offer();
-    }
-
-    private static void TryAppendSecondaryPoolCardReward(RewardsSet rewardsSet, Player rewardPlayer, IRunState runState, CombatRoom combatRoom)
-    {
-        if (!LocalMultiControlRuntime.HasDualAdventureStarterRelic(rewardPlayer))
-        {
-            return;
-        }
-
-        Player? otherPlayer = runState.Players.FirstOrDefault((candidate) => candidate.NetId != rewardPlayer.NetId);
-        if (otherPlayer == null)
-        {
-            return;
-        }
-
-        CardReward extraCardReward = new CardReward(CardCreationOptions.ForRoom(otherPlayer, combatRoom.RoomType), 3, rewardPlayer);
-        rewardsSet.WithCustomRewards(new System.Collections.Generic.List<Reward> { extraCardReward });
-        LocalMultiControlLogger.Info($"起始遗物触发额外卡牌奖励池: from={otherPlayer.NetId}, to={rewardPlayer.NetId}");
     }
 }

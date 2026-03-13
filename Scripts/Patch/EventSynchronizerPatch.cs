@@ -11,15 +11,57 @@ namespace LocalMultiControl.Scripts.Patch;
 [HarmonyPatch(typeof(EventSynchronizer), nameof(EventSynchronizer.ChooseLocalOption))]
 internal static class EventSynchronizerPatch
 {
-    [HarmonyPostfix]
-    private static void Postfix(EventSynchronizer __instance, int index)
+    [HarmonyPrefix]
+    private static void Prefix(EventSynchronizer __instance, ref ulong __state)
     {
-        if (!LocalSelfCoopContext.IsEnabled)
+        __state = 0;
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleEventFlow)
         {
             return;
         }
 
-        if (LocalSelfCoopContext.UseSingleEventFlow)
+        INetGameService? netService = AccessTools.Field(typeof(EventSynchronizer), "_netService")?.GetValue(__instance) as INetGameService;
+        if (netService is not LocalLoopbackHostGameService loopbackService)
+        {
+            return;
+        }
+
+        __state = loopbackService.NetId;
+        if (__state != LocalSelfCoopContext.PrimaryPlayerId)
+        {
+            loopbackService.SetCurrentSenderId(LocalSelfCoopContext.PrimaryPlayerId);
+        }
+    }
+
+    [HarmonyPostfix]
+    private static void Postfix(EventSynchronizer __instance, int index)
+    {
+        if (LocalSelfCoopContext.IsEnabled && LocalSelfCoopContext.UseSingleEventFlow)
+        {
+            return;
+        }
+
+        PostfixLegacy(__instance, index);
+    }
+
+    [HarmonyPostfix]
+    private static void PostfixRestoreSender(EventSynchronizer __instance, ulong __state)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleEventFlow || __state == 0)
+        {
+            return;
+        }
+
+        INetGameService? netService = AccessTools.Field(typeof(EventSynchronizer), "_netService")?.GetValue(__instance) as INetGameService;
+        if (netService is LocalLoopbackHostGameService loopbackService && loopbackService.NetId != __state)
+        {
+            loopbackService.SetCurrentSenderId(__state);
+        }
+    }
+
+    private static void PostfixLegacy(EventSynchronizer __instance, int index)
+    {
+        if (!LocalSelfCoopContext.IsEnabled)
         {
             return;
         }

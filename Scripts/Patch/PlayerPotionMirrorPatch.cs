@@ -10,19 +10,24 @@ namespace LocalMultiControl.Scripts.Patch;
 [HarmonyPatch]
 internal static class PlayerPotionMirrorPatch
 {
-    private static bool _isMirroring;
+    private static bool _isRedirecting;
 
     [HarmonyPostfix]
     [HarmonyPatch(typeof(Player), nameof(Player.AddPotionInternal))]
     private static void PostfixAddPotion(Player __instance, PotionModel potion, PotionProcureResult __result)
     {
-        if (_isMirroring || !LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode || !__result.success)
+        if (_isRedirecting || !LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode || !__result.success)
         {
             return;
         }
 
-        Player? otherPlayer = __instance.RunState.Players.FirstOrDefault((candidate) => candidate.NetId != __instance.NetId);
-        if (otherPlayer == null)
+        if (__instance.NetId == LocalSelfCoopContext.PrimaryPlayerId)
+        {
+            return;
+        }
+
+        Player? primaryPlayer = __instance.RunState.Players.FirstOrDefault((candidate) => candidate.NetId == LocalSelfCoopContext.PrimaryPlayerId);
+        if (primaryPlayer == null)
         {
             return;
         }
@@ -33,64 +38,23 @@ internal static class PlayerPotionMirrorPatch
             return;
         }
 
-        _isMirroring = true;
+        _isRedirecting = true;
         try
         {
-            PotionModel mirroredPotion = PotionModel.FromSerializable(potion.ToSerializable(slotIndex));
-            otherPlayer.AddPotionInternal(mirroredPotion, slotIndex, silent: true);
-            LocalMultiControlLogger.Info($"本地双人共享药水同步: {potion.Id.Entry}, {__instance.NetId} -> {otherPlayer.NetId}");
+            __instance.DiscardPotionInternal(potion, silent: true);
+            PotionModel redirectedPotion = PotionModel.FromSerializable(potion.ToSerializable(slotIndex));
+            PotionProcureResult redirectResult = primaryPlayer.AddPotionInternal(redirectedPotion, -1, silent: true);
+            if (!redirectResult.success)
+            {
+                LocalMultiControlLogger.Warn($"药水重定向到1号位失败（主角色已满）: {potion.Id.Entry}");
+                return;
+            }
+
+            LocalMultiControlLogger.Info($"药水已固定归属1号位: {potion.Id.Entry}, from={__instance.NetId}, to={primaryPlayer.NetId}");
         }
         finally
         {
-            _isMirroring = false;
-        }
-    }
-
-    [HarmonyPostfix]
-    [HarmonyPatch(typeof(Player), nameof(Player.DiscardPotionInternal))]
-    private static void PostfixDiscardPotion(Player __instance, PotionModel potion)
-    {
-        MirrorRemoval(__instance, potion, removeUsed: false);
-    }
-
-    [HarmonyPostfix]
-    [HarmonyPatch(typeof(Player), nameof(Player.RemoveUsedPotionInternal))]
-    private static void PostfixRemoveUsedPotion(Player __instance, PotionModel potion)
-    {
-        MirrorRemoval(__instance, potion, removeUsed: true);
-    }
-
-    private static void MirrorRemoval(Player owner, PotionModel potion, bool removeUsed)
-    {
-        if (_isMirroring || !LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
-        {
-            return;
-        }
-
-        Player? otherPlayer = owner.RunState.Players.FirstOrDefault((candidate) => candidate.NetId != owner.NetId);
-        PotionModel? mirroredPotion = otherPlayer?.Potions.FirstOrDefault((candidate) => candidate.Id == potion.Id);
-        if (otherPlayer == null || mirroredPotion == null)
-        {
-            return;
-        }
-
-        _isMirroring = true;
-        try
-        {
-            if (removeUsed)
-            {
-                otherPlayer.RemoveUsedPotionInternal(mirroredPotion);
-            }
-            else
-            {
-                otherPlayer.DiscardPotionInternal(mirroredPotion, silent: true);
-            }
-
-            LocalMultiControlLogger.Info($"本地双人共享药水移除同步: {potion.Id.Entry}, owner={otherPlayer.NetId}");
-        }
-        finally
-        {
-            _isMirroring = false;
+            _isRedirecting = false;
         }
     }
 }

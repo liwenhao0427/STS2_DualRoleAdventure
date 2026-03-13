@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Combat;
@@ -18,11 +19,9 @@ using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.TopBar;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 using Godot;
-using MegaCrit.Sts2.Core.Commands;
 
 namespace LocalMultiControl.Scripts.Runtime;
 
@@ -31,11 +30,6 @@ internal static class LocalMultiControlRuntime
     private static readonly LocalMultiSessionState Session = new LocalMultiSessionState();
 
     private static readonly HashSet<string> _fieldSyncFailures = new HashSet<string>();
-
-    public static bool HasDualAdventureStarterRelic(Player player)
-    {
-        return player.GetRelic<WongoCustomerAppreciationBadge>() != null;
-    }
 
     public static LocalMultiSessionState SessionState => Session;
 
@@ -49,7 +43,6 @@ internal static class LocalMultiControlRuntime
         }
 
         Session.InitializeFromRunState(runState);
-        EnsureDualAdventureStarterRelic(runState);
         if (Session.CurrentControlledPlayerId.HasValue)
         {
             ApplyControlContext("run-launched");
@@ -75,10 +68,19 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
-        if (CombatManager.Instance.IsInProgress && RunManager.Instance.ActionQueueSynchronizer.CombatState != ActionSynchronizerCombatState.PlayPhase)
+        if (CombatManager.Instance.IsInProgress)
         {
-            LocalMultiControlLogger.Info($"忽略切换请求({source})：当前不在可操作出牌阶段。");
-            return;
+            // 风险点：战斗中如果按“会话顺序”盲切，可能切到不在当前 CombatState 的角色，
+            // 进而触发手牌UI与动作队列 owner 不一致，表现为“无法出牌/切到空角色”。
+            if (!CanSwitchDuringCombat(source))
+            {
+                return;
+            }
+
+            if (TrySwitchCombatPlayer(next: true, source))
+            {
+                return;
+            }
         }
 
         if (Session.SwitchNextPlayer())
@@ -94,10 +96,18 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
-        if (CombatManager.Instance.IsInProgress && RunManager.Instance.ActionQueueSynchronizer.CombatState != ActionSynchronizerCombatState.PlayPhase)
+        if (CombatManager.Instance.IsInProgress)
         {
-            LocalMultiControlLogger.Info($"忽略切换请求({source})：当前不在可操作出牌阶段。");
-            return;
+            // 风险点同上；战斗内必须按当前 CombatState 的双角色互切。
+            if (!CanSwitchDuringCombat(source))
+            {
+                return;
+            }
+
+            if (TrySwitchCombatPlayer(next: false, source))
+            {
+                return;
+            }
         }
 
         if (Session.SwitchPreviousPlayer())
@@ -110,12 +120,6 @@ internal static class LocalMultiControlRuntime
     {
         if (!RunManager.Instance.IsInProgress)
         {
-            return;
-        }
-
-        if (CombatManager.Instance.IsInProgress && RunManager.Instance.ActionQueueSynchronizer.CombatState != ActionSynchronizerCombatState.PlayPhase)
-        {
-            LocalMultiControlLogger.Info($"忽略指定切换请求({source})：当前不在可操作出牌阶段。");
             return;
         }
 
@@ -143,11 +147,46 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
+        if (CombatManager.Instance.IsInProgress)
+        {
+            NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+            CombatState? combatState = combatUi != null ? TryGetCombatState(combatUi) : null;
+            if (combatState != null && combatState.GetPlayer(currentControlledPlayerId.Value) == null)
+            {
+                LocalMultiControlLogger.Warn($"检测到无效战斗角色ID，回退到1号位: {currentControlledPlayerId.Value}");
+                if (Session.TrySetCurrentPlayer(LocalSelfCoopContext.PrimaryPlayerId))
+                {
+                    currentControlledPlayerId = Session.CurrentControlledPlayerId;
+                }
+
+                if (!currentControlledPlayerId.HasValue || combatState.GetPlayer(currentControlledPlayerId.Value) == null)
+                {
+                    return;
+                }
+            }
+        }
+
         ulong? previousNetId = LocalContext.NetId;
         LocalContext.NetId = currentControlledPlayerId.Value;
         LocalSelfCoopContext.NetService?.SetCurrentSenderId(currentControlledPlayerId.Value);
         SyncRunSynchronizerLocalPlayerId(currentControlledPlayerId.Value);
-        RefreshCombatUiForControlledPlayer(currentControlledPlayerId.Value);
+
+        bool combatUiRefreshSucceeded = RefreshCombatUiForControlledPlayer(currentControlledPlayerId.Value);
+        if (CombatManager.Instance.IsInProgress && !combatUiRefreshSucceeded)
+        {
+            // 风险点：若 LocalContext 已切换但战斗UI刷新失败，会导致“逻辑 owner 与显示 owner”分离。
+            // 该状态会把后续出牌入队到错误玩家队列，因此这里必须立即回滚上下文。
+            LocalMultiControlLogger.Warn($"控制上下文切换回滚：战斗UI刷新失败，target={currentControlledPlayerId.Value}");
+            LocalContext.NetId = previousNetId;
+            if (previousNetId.HasValue)
+            {
+                LocalSelfCoopContext.NetService?.SetCurrentSenderId(previousNetId.Value);
+                SyncRunSynchronizerLocalPlayerId(previousNetId.Value);
+            }
+
+            return;
+        }
+
         RefreshTopBarForControlledPlayer(currentControlledPlayerId.Value);
         RefreshEventRoomForControlledPlayer(currentControlledPlayerId.Value);
         LocalMerchantInventoryRuntime.RefreshShopRoomForPlayer(currentControlledPlayerId.Value);
@@ -166,7 +205,10 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
-        TrySetLocalPlayerId(RunManager.Instance.EventSynchronizer, playerId, nameof(RunManager.EventSynchronizer));
+        ulong eventOwnerPlayerId = LocalSelfCoopContext.UseSingleEventFlow
+            ? LocalSelfCoopContext.PrimaryPlayerId
+            : playerId;
+        TrySetLocalPlayerId(RunManager.Instance.EventSynchronizer, eventOwnerPlayerId, nameof(RunManager.EventSynchronizer));
         TrySetLocalPlayerId(RunManager.Instance.RewardSynchronizer, playerId, nameof(RunManager.RewardSynchronizer));
         TrySetLocalPlayerId(RunManager.Instance.RestSiteSynchronizer, playerId, nameof(RunManager.RestSiteSynchronizer));
         TrySetLocalPlayerId(RunManager.Instance.OneOffSynchronizer, playerId, nameof(RunManager.OneOffSynchronizer));
@@ -220,45 +262,153 @@ internal static class LocalMultiControlRuntime
         }).CallDeferred();
     }
 
-    private static void RefreshCombatUiForControlledPlayer(ulong playerId)
+    private static bool CanSwitchDuringCombat(string source)
+    {
+        NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+        if (combatUi == null)
+        {
+            LocalMultiControlLogger.Info($"忽略切换请求({source})：战斗UI未就绪。");
+            return false;
+        }
+
+        NPlayerHand hand = combatUi.Hand;
+        if (hand.InCardPlay || hand.IsInCardSelection || (NTargetManager.Instance?.IsInSelection ?? false))
+        {
+            // 风险点：在拖牌、目标选择、选牌UI过程中切换，会把 NCardPlay/选择上下文中途打断，
+            // 容易触发 NMouseCardPlay._ExitTree 空引用，以及动作队列进入 cancel-all 状态。
+            LocalMultiControlLogger.Info($"忽略切换请求({source})：当前存在进行中的出牌/选牌操作。");
+            return false;
+        }
+
+        ActionSynchronizerCombatState combatSyncState = RunManager.Instance.ActionQueueSynchronizer.CombatState;
+        if (combatSyncState != ActionSynchronizerCombatState.PlayPhase)
+        {
+            // 风险点：非 PlayPhase 期间切换 owner，动作会被延迟/拒绝入队，造成“按牌无反应”。
+            LocalMultiControlLogger.Info($"忽略切换请求({source})：战斗同步阶段={combatSyncState}。");
+            return false;
+        }
+
+        CombatState? combatState = TryGetCombatState(combatUi);
+        if (combatState == null || combatState.CurrentSide != CombatSide.Player)
+        {
+            LocalMultiControlLogger.Info($"忽略切换请求({source})：当前不在玩家出牌阶段。");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TrySwitchCombatPlayer(bool next, string source)
+    {
+        NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+        if (combatUi == null)
+        {
+            return false;
+        }
+
+        CombatState? combatState = TryGetCombatState(combatUi);
+        if (combatState == null)
+        {
+            return false;
+        }
+
+        List<ulong> combatPlayerIds = combatState.Players.Select((player) => player.NetId).Distinct().ToList();
+        if (combatPlayerIds.Count != 2)
+        {
+            // 风险点：当前实现只保证“双角色本地多控”，人数异常时继续切换会引入不可预期 owner 绑定。
+            LocalMultiControlLogger.Warn($"战斗角色切换需要2名玩家，当前数量={combatPlayerIds.Count}");
+            return false;
+        }
+
+        ulong currentPlayerId = Session.CurrentControlledPlayerId ?? LocalContext.NetId ?? combatPlayerIds[0];
+        int currentIndex = combatPlayerIds.IndexOf(currentPlayerId);
+        if (currentIndex < 0)
+        {
+            currentIndex = 0;
+        }
+
+        int targetIndex = (currentIndex + (next ? 1 : combatPlayerIds.Count - 1)) % combatPlayerIds.Count;
+        ulong targetPlayerId = combatPlayerIds[targetIndex];
+        if (targetPlayerId == currentPlayerId)
+        {
+            return false;
+        }
+
+        if (!Session.TrySetCurrentPlayer(targetPlayerId))
+        {
+            return false;
+        }
+
+        ApplyControlContext(source);
+        return true;
+    }
+
+    private static CombatState? TryGetCombatState(NCombatUi combatUi)
+    {
+        return AccessTools.Field(typeof(NEndTurnButton), "_combatState")?.GetValue(combatUi.EndTurnButton) as CombatState;
+    }
+
+    private static bool RefreshCombatUiForControlledPlayer(ulong playerId)
     {
         if (!CombatManager.Instance.IsInProgress)
         {
-            return;
+            return true;
         }
 
         NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
         if (combatUi == null)
         {
-            return;
+            return true;
         }
 
-        CombatState? combatState = AccessTools.Field(typeof(NEndTurnButton), "_combatState")?.GetValue(combatUi.EndTurnButton) as CombatState;
+        CombatState? combatState = TryGetCombatState(combatUi);
         if (combatState == null)
         {
-            return;
+            return true;
         }
 
         Player? player = combatState.GetPlayer(playerId);
         if (player == null)
         {
             LocalMultiControlLogger.Warn($"刷新战斗UI失败：未找到玩家 {playerId}");
-            return;
+            return false;
         }
 
         try
         {
+            NPlayerHand hand = combatUi.Hand;
+            if (hand.InCardPlay || hand.IsInCardSelection || (NTargetManager.Instance?.IsInSelection ?? false))
+            {
+                // 风险点：此时重建手牌容器会销毁仍在生命周期中的 holder/cardplay 节点。
+                LocalMultiControlLogger.Info($"战斗UI刷新延后：当前有进行中的出牌/选牌操作，player={playerId}");
+                return false;
+            }
+
             CardPile handPile = PileType.Hand.GetPile(player);
             AccessTools.Field(typeof(NEndTurnButton), "_playerHand")?.SetValue(combatUi.EndTurnButton, handPile);
             combatUi.DrawPile.Initialize(player);
             combatUi.DiscardPile.Initialize(player);
             combatUi.ExhaustPile.Initialize(player);
 
-            NPlayerHand hand = combatUi.Hand;
             hand.CancelAllCardPlay();
-            foreach (NCardHolder holder in hand.CardHolderContainer.GetChildren().OfType<NCardHolder>().ToList())
+            foreach (Node child in hand.CardHolderContainer.GetChildren().ToList())
             {
-                hand.RemoveCardHolder(holder);
+                if (child is not NCardHolder holder || !GodotObject.IsInstanceValid(holder))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    hand.RemoveCardHolder(holder);
+                }
+                catch
+                {
+                    // 防御性兜底：历史日志中该处出现过节点生命周期竞争（已释放对象被二次访问）。
+                    // 这里保留最小破坏的强制移除路径，后续请谨慎改动该分支。
+                    holder.GetParent()?.RemoveChild(holder);
+                    holder.QueueFreeSafely();
+                }
             }
 
             foreach (CardModel card in handPile.Cards)
@@ -272,12 +422,14 @@ internal static class LocalMultiControlRuntime
 
             hand.ForceRefreshCardIndices();
             RefreshCombatEnergyUi(combatUi, player);
-            ReevaluateEndTurnButtonState(combatUi, combatState);
+            ReevaluateEndTurnButtonState(combatUi, combatState, player);
             LocalMultiControlLogger.Info($"战斗UI已刷新到当前角色 {playerId}，手牌数量={handPile.Cards.Count}");
+            return true;
         }
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"刷新战斗UI失败: {exception.Message}");
+            return false;
         }
     }
 
@@ -372,6 +524,11 @@ internal static class LocalMultiControlRuntime
 
     private static void RefreshEventRoomForControlledPlayer(ulong playerId)
     {
+        if (LocalSelfCoopContext.UseSingleEventFlow)
+        {
+            return;
+        }
+
         NEventRoom? eventRoom = NEventRoom.Instance;
         EventSynchronizer synchronizer = RunManager.Instance.EventSynchronizer;
         if (eventRoom == null || synchronizer.IsShared)
@@ -430,7 +587,7 @@ internal static class LocalMultiControlRuntime
         }
     }
 
-    private static void ReevaluateEndTurnButtonState(NCombatUi combatUi, CombatState combatState)
+    private static void ReevaluateEndTurnButtonState(NCombatUi combatUi, CombatState combatState, Player currentPlayer)
     {
         if (combatState.CurrentSide != CombatSide.Player)
         {
@@ -439,20 +596,16 @@ internal static class LocalMultiControlRuntime
 
         try
         {
-            Player? currentPlayer = combatState.GetPlayer(LocalContext.NetId ?? 0);
-            if (currentPlayer != null)
-            {
-                bool shouldDisable = CombatManager.Instance.IsPlayerReadyToEndTurn(currentPlayer);
-                AccessTools.PropertySetter(typeof(CombatManager), "PlayerActionsDisabled")?.Invoke(CombatManager.Instance, new object[] { shouldDisable });
+            bool shouldDisable = CombatManager.Instance.IsPlayerReadyToEndTurn(currentPlayer);
+            AccessTools.PropertySetter(typeof(CombatManager), "PlayerActionsDisabled")?.Invoke(CombatManager.Instance, new object[] { shouldDisable });
 
-                Type? stateType = AccessTools.Inner(typeof(NEndTurnButton), "State");
-                MethodInfo? setStateMethod = AccessTools.Method(typeof(NEndTurnButton), "SetState");
-                if (stateType != null && setStateMethod != null)
-                {
-                    bool canTakeAction = !shouldDisable;
-                    object stateValue = Enum.ToObject(stateType, canTakeAction ? 0 : 1);
-                    setStateMethod.Invoke(combatUi.EndTurnButton, new object[] { stateValue });
-                }
+            Type? stateType = AccessTools.Inner(typeof(NEndTurnButton), "State");
+            MethodInfo? setStateMethod = AccessTools.Method(typeof(NEndTurnButton), "SetState");
+            if (stateType != null && setStateMethod != null)
+            {
+                bool canTakeAction = !shouldDisable;
+                object stateValue = Enum.ToObject(stateType, canTakeAction ? 0 : 1);
+                setStateMethod.Invoke(combatUi.EndTurnButton, new object[] { stateValue });
             }
 
             combatUi.EndTurnButton.RefreshEnabled();
@@ -463,20 +616,4 @@ internal static class LocalMultiControlRuntime
         }
     }
 
-    private static void EnsureDualAdventureStarterRelic(RunState runState)
-    {
-        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode || runState.Players.Count != 2)
-        {
-            return;
-        }
-
-        if (runState.Players.Any(HasDualAdventureStarterRelic))
-        {
-            return;
-        }
-
-        Player grantPlayer = runState.GetPlayer(LocalSelfCoopContext.PrimaryPlayerId) ?? runState.Players[0];
-        TaskHelper.RunSafely(RelicCmd.Obtain(ModelDb.Relic<WongoCustomerAppreciationBadge>().ToMutable(), grantPlayer));
-        LocalMultiControlLogger.Info("已发放双角色冒险起始遗物：WongoCustomerAppreciationBadge。");
-    }
 }

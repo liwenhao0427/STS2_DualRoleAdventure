@@ -38,9 +38,27 @@ internal sealed class LocalMultiSessionState
             return;
         }
 
-        foreach (Player player in runState.Players)
+        if (LocalSelfCoopContext.IsEnabled)
         {
-            _orderedPlayerIds.Add(player.NetId);
+            Player? primaryPlayer = runState.GetPlayer(LocalSelfCoopContext.PrimaryPlayerId);
+            Player? secondaryPlayer = runState.GetPlayer(LocalSelfCoopContext.SecondaryPlayerId);
+            if (primaryPlayer != null)
+            {
+                _orderedPlayerIds.Add(primaryPlayer.NetId);
+            }
+
+            if (secondaryPlayer != null)
+            {
+                _orderedPlayerIds.Add(secondaryPlayer.NetId);
+            }
+        }
+
+        if (_orderedPlayerIds.Count == 0)
+        {
+            foreach (Player player in runState.Players)
+            {
+                _orderedPlayerIds.Add(player.NetId);
+            }
         }
 
         _activeIndex = 0;

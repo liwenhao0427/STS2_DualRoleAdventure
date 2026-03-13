@@ -54,6 +54,13 @@
 - Debug 构建：`dotnet build LocalMultiControl.csproj -c Debug`
 - Release 构建：`dotnet build LocalMultiControl.csproj -c Release`
 
+### 4.1.1 构建产物路径约束（新增）
+
+- `Godot.NET.Sdk` 默认会先把编译产物输出到：`.godot/mono/temp/bin/<Config>/DualRoleAdventure.dll`。
+- 项目通过 `CopyDllToProjectRoot` 目标会再复制一份到项目根：`DualRoleAdventure.dll`。
+- **部署、联调、对外引用统一使用项目根 `DualRoleAdventure.dll`，不要使用 `.godot/mono/temp/bin/...` 下的临时 DLL。**
+- 代理在日志说明中若提到 DLL 路径，优先写项目根路径，避免误导。
+
 ### 4.2 代码格式与静态检查
 
 - 检查格式（不改文件）：`dotnet format LocalMultiControl.csproj --verify-no-changes`
