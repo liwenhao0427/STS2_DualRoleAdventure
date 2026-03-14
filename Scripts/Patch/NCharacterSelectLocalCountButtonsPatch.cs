@@ -49,6 +49,7 @@ internal static class LocalCharacterSelectCountButtons
     private const string NextButtonName = "LocalSelfCoopNextButton";
     private static readonly Vector2 ButtonSize = new Vector2(140f, 32f);
     private const float VerticalGapRatio = 0.5f;
+    private const float HorizontalGapByIcon = 44f;
 
     public static void Sync(NCharacterSelectScreen screen)
     {
@@ -141,7 +142,7 @@ internal static class LocalCharacterSelectCountButtons
             return;
         }
 
-        float horizontalGap = ButtonSize.X;
+        float horizontalGap = HorizontalGapByIcon;
         float verticalGap = ButtonSize.Y * VerticalGapRatio;
         float secondColumnX = ButtonSize.X + horizontalGap;
         float secondRowY = ButtonSize.Y + verticalGap;
