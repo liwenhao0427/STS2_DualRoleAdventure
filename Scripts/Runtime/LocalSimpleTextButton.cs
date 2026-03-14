@@ -7,6 +7,7 @@ internal sealed partial class LocalSimpleTextButton : NButton
 {
     private const string ButtonTexturePath = "res://images/packed/common_ui/event_button.png";
     private const string HsvShaderPath = "res://shaders/hsv.gdshader";
+    private static readonly Vector2 DefaultButtonSize = new Vector2(92f, 38f);
 
     private TextureRect? _image;
     private Label? _label;
@@ -74,8 +75,14 @@ internal sealed partial class LocalSimpleTextButton : NButton
     {
         FocusMode = FocusModeEnum.All;
         MouseFilter = MouseFilterEnum.Stop;
-        CustomMinimumSize = new Vector2(120f, 52f);
-        PivotOffset = CustomMinimumSize * 0.5f;
+
+        // 注意：这里不能再硬编码大尺寸。
+        // 之前强制 120x52 导致所有业务按钮（+/-、切人、上下切人）被放大且遮挡，甚至出现无法点击 + 的回归。
+        // 如需调整按钮大小，请在各业务调用处设置 CustomMinimumSize，并保持本处“尊重外部传入尺寸”的行为。
+        Vector2 desiredSize = ResolveDesiredSize();
+        CustomMinimumSize = desiredSize;
+        Size = desiredSize;
+        PivotOffset = desiredSize * 0.5f;
 
         _image ??= CreateImageNode();
         _label ??= CreateLabelNode();
@@ -126,14 +133,14 @@ internal sealed partial class LocalSimpleTextButton : NButton
         Label label = new Label
         {
             Name = "Label",
-            AnchorLeft = 0.5f,
-            AnchorTop = 0.5f,
-            AnchorRight = 0.5f,
-            AnchorBottom = 0.5f,
-            OffsetLeft = -40f,
-            OffsetTop = -16f,
-            OffsetRight = 40f,
-            OffsetBottom = 16f,
+            AnchorLeft = 0f,
+            AnchorTop = 0f,
+            AnchorRight = 1f,
+            AnchorBottom = 1f,
+            OffsetLeft = 0f,
+            OffsetTop = 0f,
+            OffsetRight = 0f,
+            OffsetBottom = 0f,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore
@@ -144,8 +151,23 @@ internal sealed partial class LocalSimpleTextButton : NButton
         label.AddThemeConstantOverride("outline_size", 8);
         label.AddThemeConstantOverride("shadow_offset_x", 2);
         label.AddThemeConstantOverride("shadow_offset_y", 1);
-        label.AddThemeFontSizeOverride("font_size", 22);
+        label.AddThemeFontSizeOverride("font_size", 20);
         return label;
+    }
+
+    private Vector2 ResolveDesiredSize()
+    {
+        if (CustomMinimumSize.X > 1f && CustomMinimumSize.Y > 1f)
+        {
+            return CustomMinimumSize;
+        }
+
+        if (Size.X > 1f && Size.Y > 1f)
+        {
+            return Size;
+        }
+
+        return DefaultButtonSize;
     }
 
     private void ApplyDefaultVisualState()
@@ -159,4 +181,3 @@ internal sealed partial class LocalSimpleTextButton : NButton
         _hsv?.SetShaderParameter("v", value);
     }
 }
-

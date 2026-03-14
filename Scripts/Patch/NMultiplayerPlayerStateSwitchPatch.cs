@@ -15,6 +15,9 @@ internal static class NMultiplayerPlayerStateReadyPatch
     [HarmonyPostfix]
     private static void Postfix(NMultiplayerPlayerState __instance)
     {
+        // 注意：不要再改成直接 Patch NMultiplayerPlayerState._Process。
+        // 该目标方法在线上版本曾解析失败并触发 Harmony 初始化异常，导致整包补丁加载不完整。
+        // 统一通过 Tracker 节点逐帧刷新，避免再次出现“无法开始游戏”的回归。
         LocalMultiplayerPlayerStateSwitchUi.Ensure(__instance);
     }
 }
@@ -49,7 +52,11 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
         }
 
         button.ButtonText = $"切{LocalSelfCoopContext.GetSlotLabel(state.Player.NetId)}";
-        button.GlobalPosition = state.GlobalPosition + new Vector2(state.Hitbox.Size.X + 10f, 10f);
+
+        // 注意：固定 X 轴对齐是用户明确要求，不能再按 Hitbox 宽度动态计算。
+        // 之前 state.Hitbox.Size.X 会因名称/状态变化而偏移，造成三行按钮参差不齐。
+        float fixedX = state.GlobalPosition.X + 232f;
+        button.GlobalPosition = new Vector2(fixedX, state.GlobalPosition.Y + 8f);
     }
 
     private static void EnsureSwitchButton(NMultiplayerPlayerState state)
@@ -64,8 +71,8 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
             Name = SwitchButtonName,
             ButtonText = "切换",
             FocusMode = Control.FocusModeEnum.None,
-            Size = new Vector2(72f, 34f),
-            CustomMinimumSize = new Vector2(72f, 34f),
+            Size = new Vector2(52f, 30f),
+            CustomMinimumSize = new Vector2(52f, 30f),
             TopLevel = true,
             ZIndex = 100
         };

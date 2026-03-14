@@ -75,6 +75,7 @@ internal static class LocalCombatSwitchButtons
     private const string ContainerName = "LocalCombatSwitchContainer";
     private const string UpButtonName = "LocalCombatSwitchUpButton";
     private const string DownButtonName = "LocalCombatSwitchDownButton";
+    private const string TrackerName = "LocalCombatSwitchTracker";
     private static readonly Vector2 PingShowPosRatio = new Vector2(1536f, 932f) / NGame.devResolution;
     private static readonly Vector2 ButtonOffset = new Vector2(162f, -2f);
 
@@ -98,8 +99,8 @@ internal static class LocalCombatSwitchButtons
             Name = UpButtonName,
             ButtonText = "上",
             FocusMode = Control.FocusModeEnum.None,
-            Size = new Vector2(72f, 34f),
-            CustomMinimumSize = new Vector2(72f, 34f)
+            Size = new Vector2(48f, 28f),
+            CustomMinimumSize = new Vector2(48f, 28f)
         };
         upButton.Connect(
             MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl.SignalName.Released,
@@ -112,9 +113,9 @@ internal static class LocalCombatSwitchButtons
             Name = DownButtonName,
             ButtonText = "下",
             FocusMode = Control.FocusModeEnum.None,
-            Size = new Vector2(72f, 34f),
-            CustomMinimumSize = new Vector2(72f, 34f),
-            Position = new Vector2(0f, 42f)
+            Size = new Vector2(48f, 28f),
+            CustomMinimumSize = new Vector2(48f, 28f),
+            Position = new Vector2(0f, 32f)
         };
         downButton.Connect(
             MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl.SignalName.Released,
@@ -123,7 +124,26 @@ internal static class LocalCombatSwitchButtons
         container.AddChild(downButton);
 
         combatUi.AddChildSafely(container);
+        EnsureTracker(combatUi);
         LocalMultiControlLogger.Info("战斗界面已创建 Ping 右侧上下切人按钮。");
+    }
+
+    private static void EnsureTracker(NCombatUi combatUi)
+    {
+        if (combatUi.GetNodeOrNull<LocalCombatSwitchTracker>(TrackerName) != null)
+        {
+            return;
+        }
+
+        // 注意：不要再用 NCombatUi._Process 打补丁。
+        // 该方法在目标版本不存在，曾导致 Harmony 初始化失败，进而引发“无法开始/读档异常”。
+        // 这里改为挂一个本地跟随节点逐帧刷新，兼容性更稳。
+        LocalCombatSwitchTracker tracker = new LocalCombatSwitchTracker
+        {
+            Name = TrackerName
+        };
+        tracker.Initialize(combatUi);
+        combatUi.AddChild(tracker);
     }
 
     public static void Refresh(NCombatUi combatUi)
@@ -160,5 +180,27 @@ internal static class LocalCombatSwitchButtons
     {
         Control? container = combatUi.GetNodeOrNull<Control>(ContainerName);
         container?.QueueFreeSafely();
+    }
+}
+
+internal sealed partial class LocalCombatSwitchTracker : Node
+{
+    private NCombatUi? _combatUi;
+
+    public void Initialize(NCombatUi combatUi)
+    {
+        _combatUi = combatUi;
+        SetProcess(true);
+    }
+
+    public override void _Process(double delta)
+    {
+        if (_combatUi == null || !GodotObject.IsInstanceValid(_combatUi))
+        {
+            QueueFree();
+            return;
+        }
+
+        LocalCombatSwitchButtons.Refresh(_combatUi);
     }
 }
