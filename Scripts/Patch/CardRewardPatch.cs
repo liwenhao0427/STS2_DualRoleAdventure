@@ -29,6 +29,8 @@ namespace LocalMultiControl.Scripts.Patch;
 [HarmonyPatch(typeof(CardReward), "Populate")]
 internal static class CardRewardPatchPopulate
 {
+    private const int DefaultOptionCount = 3;
+
     [HarmonyPostfix]
     private static void Postfix(CardReward __instance)
     {
@@ -46,14 +48,26 @@ internal static class CardRewardPatchPopulate
             }
 
             IRunState runState = currentPlayer.RunState;
-            IEnumerable<Player> otherPlayers = runState.Players.Where(p => p.NetId != currentPlayer.NetId);
-            Player? otherPlayer = otherPlayers.FirstOrDefault();
+            Player? otherPlayer = runState.Players.FirstOrDefault((player) => player.NetId != currentPlayer.NetId);
             if (otherPlayer == null)
             {
                 return;
             }
 
-            CardCreationOptions options = AccessTools.Property(typeof(CardReward), "Options")?.GetValue(__instance) as CardCreationOptions;
+            List<CardCreationResult>? cards = AccessTools.Field(typeof(CardReward), "_cards")?.GetValue(__instance) as List<CardCreationResult>;
+            if (cards == null)
+            {
+                return;
+            }
+
+            int optionCount = AccessTools.Property(typeof(CardReward), "OptionCount")?.GetValue(__instance) as int? ?? DefaultOptionCount;
+            if (cards.Count != optionCount)
+            {
+                // 幂等保护：Populate 在 reroll 等场景可能重复触发，已扩展过则不再追加。
+                return;
+            }
+
+            CardCreationOptions? options = AccessTools.Property(typeof(CardReward), "Options")?.GetValue(__instance) as CardCreationOptions;
             if (options == null)
             {
                 return;
@@ -69,16 +83,26 @@ internal static class CardRewardPatchPopulate
                 return;
             }
 
-            AbstractRoom? room = runState.CurrentRoom;
-            if (room is not CombatRoom combatRoom)
+            if (runState.CurrentRoom is not CombatRoom)
             {
                 return;
             }
 
-            CardReward extraReward = new CardReward(options, 3, otherPlayer);
-            combatRoom.AddExtraReward(otherPlayer, extraReward);
+            CardCreationOptions otherPlayerOptions = (options with { }).WithCardPools(new[] { otherPlayer.Character.CardPool }, options.CardPoolFilter);
+            IReadOnlyList<CardCreationResult> extraCards = CardFactory.CreateForReward(otherPlayer, optionCount, otherPlayerOptions).ToList();
+            if (extraCards.Count <= 0)
+            {
+                return;
+            }
 
-            LocalMultiControlLogger.Info($"卡牌奖励已添加额外组: currentPlayer={currentPlayer.NetId}, otherPlayer={otherPlayer.NetId}");
+            cards.AddRange(extraCards);
+            NCardRewardSelectionScreen? currentScreen = AccessTools.Field(typeof(CardReward), "_currentlyShownScreen")?.GetValue(__instance) as NCardRewardSelectionScreen;
+            if (currentScreen != null)
+            {
+                currentScreen.RefreshOptions(cards, CardRewardAlternative.Generate(__instance));
+            }
+
+            LocalMultiControlLogger.Info($"卡牌奖励已追加另一角色卡池候选: currentPlayer={currentPlayer.NetId}, otherPlayer={otherPlayer.NetId}, added={extraCards.Count}");
         }
         catch (Exception ex)
         {
@@ -218,3 +242,4 @@ internal static class CardRewardPatch
         return fallback.RunState.GetPlayer(currentPlayerId) ?? fallback;
     }
 }
+
