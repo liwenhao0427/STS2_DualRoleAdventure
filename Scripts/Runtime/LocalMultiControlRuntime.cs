@@ -188,6 +188,7 @@ internal static class LocalMultiControlRuntime
         }
 
         RefreshTopBarForControlledPlayer(currentControlledPlayerId.Value);
+        RefreshRestSiteForControlledPlayer(currentControlledPlayerId.Value);
         RefreshEventRoomForControlledPlayer(currentControlledPlayerId.Value);
         LocalMerchantInventoryRuntime.RefreshShopRoomForPlayer(currentControlledPlayerId.Value);
         LocalMultiControlLogger.Info($"控制上下文已更新: {previousNetId?.ToString() ?? "null"} -> {currentControlledPlayerId.Value}, source={source}");
@@ -520,6 +521,27 @@ internal static class LocalMultiControlRuntime
         }
 
         deckButton.Initialize(player);
+    }
+
+    private static void RefreshRestSiteForControlledPlayer(ulong playerId)
+    {
+        NRestSiteRoom? restSiteRoom = NRestSiteRoom.Instance;
+        if (restSiteRoom == null)
+        {
+            return;
+        }
+
+        try
+        {
+            RunManager.Instance.RestSiteSynchronizer.LocalOptionHovered(null);
+            AccessTools.Field(typeof(NRestSiteRoom), "_lastFocused")?.SetValue(restSiteRoom, null);
+            AccessTools.Method(typeof(NRestSiteRoom), "UpdateRestSiteOptions")?.Invoke(restSiteRoom, null);
+            LocalMultiControlLogger.Info($"休息区UI已刷新到当前角色: {playerId}");
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"刷新休息区UI失败: {exception.Message}");
+        }
     }
 
     private static void RefreshEventRoomForControlledPlayer(ulong playerId)
