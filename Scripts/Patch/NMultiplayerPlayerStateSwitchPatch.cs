@@ -56,7 +56,7 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
 
         // 注意：固定 X 轴对齐是用户明确要求，不能再按 Hitbox 宽度动态计算。
         // 之前 state.Hitbox.Size.X 会因名称/状态变化而偏移，造成三行按钮参差不齐。
-        float fixedX = state.GetViewport().GetVisibleRect().Size.X * (362f / NGame.devResolution.X);
+        float fixedX = state.GetViewport().GetVisibleRect().Size.X * (430f / NGame.devResolution.X);
         button.GlobalPosition = new Vector2(fixedX, state.GlobalPosition.Y + 8f);
     }
 
@@ -72,9 +72,9 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
             Name = SwitchButtonName,
             ButtonText = "切",
             FocusMode = Control.FocusModeEnum.None,
-            FontSize = 16,
-            Size = new Vector2(52f, 28f),
-            CustomMinimumSize = new Vector2(52f, 28f),
+            FontSize = 18,
+            Size = new Vector2(68f, 32f),
+            CustomMinimumSize = new Vector2(68f, 32f),
             TopLevel = true,
             ZIndex = 100
         };

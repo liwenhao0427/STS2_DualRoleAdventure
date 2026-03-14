@@ -99,9 +99,9 @@ internal static class LocalCombatSwitchButtons
             Name = PrevButtonName,
             ButtonText = "<",
             FocusMode = Control.FocusModeEnum.None,
-            FontSize = 18,
-            Size = new Vector2(44f, 28f),
-            CustomMinimumSize = new Vector2(44f, 28f)
+            FontSize = 20,
+            Size = new Vector2(56f, 32f),
+            CustomMinimumSize = new Vector2(56f, 32f)
         };
         prevButton.Connect(
             MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl.SignalName.Released,
@@ -114,10 +114,10 @@ internal static class LocalCombatSwitchButtons
             Name = NextButtonName,
             ButtonText = ">",
             FocusMode = Control.FocusModeEnum.None,
-            FontSize = 18,
-            Size = new Vector2(44f, 28f),
-            CustomMinimumSize = new Vector2(44f, 28f),
-            Position = new Vector2(48f, 0f)
+            FontSize = 20,
+            Size = new Vector2(56f, 32f),
+            CustomMinimumSize = new Vector2(56f, 32f),
+            Position = new Vector2(60f, 0f)
         };
         nextButton.Connect(
             MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl.SignalName.Released,
