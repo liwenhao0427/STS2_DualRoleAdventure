@@ -3,6 +3,7 @@ using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -19,8 +20,38 @@ internal static class NCombatUiReadyPatch
     }
 }
 
-[HarmonyPatch(typeof(NCombatUi), nameof(NCombatUi._Process))]
-internal static class NCombatUiProcessPatch
+[HarmonyPatch(typeof(NCombatUi), nameof(NCombatUi.Activate))]
+internal static class NCombatUiActivatePatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(NCombatUi __instance, CombatState state)
+    {
+        LocalCombatSwitchButtons.Refresh(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(NCombatUi), nameof(NCombatUi.Enable))]
+internal static class NCombatUiEnablePatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(NCombatUi __instance)
+    {
+        LocalCombatSwitchButtons.Refresh(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(NCombatUi), nameof(NCombatUi.Disable))]
+internal static class NCombatUiDisablePatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(NCombatUi __instance)
+    {
+        LocalCombatSwitchButtons.Refresh(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(NCombatUi), nameof(NCombatUi.Deactivate))]
+internal static class NCombatUiDeactivatePatch
 {
     [HarmonyPostfix]
     private static void Postfix(NCombatUi __instance)
@@ -44,6 +75,8 @@ internal static class LocalCombatSwitchButtons
     private const string ContainerName = "LocalCombatSwitchContainer";
     private const string UpButtonName = "LocalCombatSwitchUpButton";
     private const string DownButtonName = "LocalCombatSwitchDownButton";
+    private static readonly Vector2 PingShowPosRatio = new Vector2(1536f, 932f) / NGame.devResolution;
+    private static readonly Vector2 ButtonOffset = new Vector2(162f, -2f);
 
     public static void Ensure(NCombatUi combatUi)
     {
@@ -101,22 +134,26 @@ internal static class LocalCombatSwitchButtons
             return;
         }
 
-        NPingButton? pingButton = AccessTools.Field(typeof(NCombatUi), "<PingButton>k__BackingField")?.GetValue(combatUi) as NPingButton;
         bool hasMultiplePlayers = LocalMultiControlRuntime.SessionState.OrderedPlayerIds.Count > 1;
         bool shouldShow = LocalSelfCoopContext.IsEnabled
                           && RunManager.Instance.IsInProgress
                           && CombatManager.Instance.IsInProgress
-                          && hasMultiplePlayers
-                          && pingButton != null
-                          && pingButton.Visible;
+                          && hasMultiplePlayers;
 
         container.Visible = shouldShow;
-        if (!shouldShow || pingButton == null)
+        if (!shouldShow)
         {
             return;
         }
 
-        container.GlobalPosition = pingButton.GlobalPosition + new Vector2(pingButton.Size.X + 12f, -2f);
+        Viewport? viewport = combatUi.GetViewport();
+        if (viewport == null)
+        {
+            return;
+        }
+
+        Vector2 anchor = PingShowPosRatio * viewport.GetVisibleRect().Size;
+        container.GlobalPosition = anchor + ButtonOffset;
     }
 
     public static void Remove(NCombatUi combatUi)
