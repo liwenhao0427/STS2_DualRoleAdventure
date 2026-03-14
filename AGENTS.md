@@ -187,6 +187,15 @@
   - `Start-Process "steam://rungameid/2868840"`
 - 若用户在当次会话中明确说明“不自动启动游戏”，则跳过此步骤。
 
+## 18. 非代码改动跳过部署（新增）
+
+- 当本次会话**未修改代码文件**时，跳过部署与启动流程。
+- 代码文件指 `Scripts/` 下的 `*.cs`（含其子目录）；若仅修改 `README.md`、`AGENTS.md`、`task.md`、`.editorconfig`、`.gitattributes` 等文档/配置文件，不执行以下步骤：
+  - Godot `--export-pack` 导出
+  - `copy_pck_to_game.ps1` 复制
+  - `Start-Process "steam://rungameid/2868840"` 自动启动游戏
+- 若会话中同时存在代码改动与文档改动，仍按既有规则执行部署与启动（除非用户明确要求跳过）。
+
 ## 17. 发版流程
 
 - 默认支持“快速发版”：当用户明确要求直接发 Release 时，允许基于当前项目根已有产物直接发布，不强制重新编译或重新导出 pck。
