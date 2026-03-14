@@ -16,6 +16,7 @@ namespace LocalMultiControl.Scripts.Patch;
 internal static class NMultiplayerHostSubmenuPatch
 {
     private const string LocalSelfCoopButtonName = "LocalSelfCoopButton";
+    private const float CardGap = 26f;
 
     [HarmonyPostfix]
     private static void Postfix(NMultiplayerHostSubmenu __instance)
@@ -40,6 +41,7 @@ internal static class NMultiplayerHostSubmenuPatch
             NSubmenuButton templateButton = customButton ?? standardButton;
             NSubmenuButton button = CreateStyledButton(templateButton);
             button.Name = LocalSelfCoopButtonName;
+            EnsureVisualResourcesUnique(button);
             ApplyButtonText(button);
             button.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>((_) => OnLocalSelfCoopPressed(__instance)));
 
@@ -64,6 +66,15 @@ internal static class NMultiplayerHostSubmenuPatch
                                                    Node.DuplicateFlags.UseInstantiation;
         return templateButton.Duplicate((int)duplicateFlags) as NSubmenuButton
             ?? throw new InvalidOperationException("复制模板按钮失败。");
+    }
+
+    private static void EnsureVisualResourcesUnique(NSubmenuButton button)
+    {
+        Node? bgPanelNode = button.FindChild("BgPanel", recursive: true, owned: false);
+        if (bgPanelNode is CanvasItem bgPanel && bgPanel.Material is ShaderMaterial material)
+        {
+            bgPanel.Material = material.Duplicate() as ShaderMaterial;
+        }
     }
 
     private static void ApplyButtonText(NSubmenuButton button)
@@ -95,20 +106,27 @@ internal static class NMultiplayerHostSubmenuPatch
         List<NSubmenuButton> originalButtons = new() { standardButton, dailyButton, customButton };
         originalButtons = originalButtons.OrderBy((item) => item.Position.X).ToList();
 
-        float minX = originalButtons[0].Position.X;
-        float maxX = originalButtons[2].Position.X;
-        if (Math.Abs(maxX - minX) < 1f)
+        float y = originalButtons[0].Position.Y;
+        float cardWidth = originalButtons[0].Size.X;
+        if (cardWidth <= 1f)
+        {
+            cardWidth = localButton.Size.X;
+        }
+
+        if (cardWidth <= 1f)
         {
             return;
         }
 
-        float y = originalButtons[0].Position.Y;
-        float stepX = (maxX - minX) / 3f;
+        float centerX = originalButtons.Average((item) => item.Position.X + item.Size.X * 0.5f);
+        float totalWidth = cardWidth * 4f + CardGap * 3f;
+        float startX = centerX - totalWidth * 0.5f;
         List<NSubmenuButton> arranged = new() { localButton, originalButtons[0], originalButtons[1], originalButtons[2] };
         for (int index = 0; index < arranged.Count; index++)
         {
             NSubmenuButton button = arranged[index];
-            button.Position = new Vector2(minX + stepX * index, y);
+            float x = startX + index * (cardWidth + CardGap);
+            button.Position = new Vector2(x, y);
         }
     }
 
