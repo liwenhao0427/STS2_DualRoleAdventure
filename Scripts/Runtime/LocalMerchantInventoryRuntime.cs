@@ -100,16 +100,14 @@ internal static class LocalMerchantInventoryRuntime
         List<MerchantRelicEntry> relicEntries = GetField<List<MerchantRelicEntry>>(inventory, "_relicEntries");
         List<MerchantPotionEntry> potionEntries = GetField<List<MerchantPotionEntry>>(inventory, "_potionEntries");
 
-        List<CardModel> mergedCharacterCards = player.RunState.Players
-            .SelectMany((runPlayer) => runPlayer.Character.CardPool.GetUnlockedCards(runPlayer.UnlockState, runPlayer.RunState.CardMultiplayerConstraint))
-            .GroupBy((card) => card.Id)
-            .Select((group) => group.First())
+        List<CardModel> characterCards = player.Character.CardPool
+            .GetUnlockedCards(player.UnlockState, player.RunState.CardMultiplayerConstraint)
             .ToList();
 
         int onSaleIndex = player.PlayerRng.Shops.NextInt(CharacterCardTypes.Length);
         for (int i = 0; i < CharacterCardTypes.Length; i++)
         {
-            MerchantCardEntry entry = new MerchantCardEntry(player, inventory, mergedCharacterCards, CharacterCardTypes[i]);
+            MerchantCardEntry entry = new MerchantCardEntry(player, inventory, characterCards, CharacterCardTypes[i]);
             entry.Populate();
             if (i == onSaleIndex)
             {

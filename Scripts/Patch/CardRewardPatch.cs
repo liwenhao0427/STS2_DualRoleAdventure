@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.CardRewardAlternatives;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
@@ -23,6 +24,75 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Runs.History;
 
 namespace LocalMultiControl.Scripts.Patch;
+
+[HarmonyPatch(typeof(CardReward), "Populate")]
+internal static class CardRewardPatchPopulate
+{
+    [HarmonyPostfix]
+    private static void Postfix(CardReward __instance)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
+        {
+            return;
+        }
+
+        try
+        {
+            List<CardCreationResult>? cards = AccessTools.Field(typeof(CardReward), "_cards")?.GetValue(__instance) as List<CardCreationResult>;
+            if (cards == null || cards.Count == 0)
+            {
+                return;
+            }
+
+            Player currentPlayer = __instance.Player;
+            if (currentPlayer == null || currentPlayer.RunState == null)
+            {
+                return;
+            }
+
+            IEnumerable<Player> otherPlayers = currentPlayer.RunState.Players.Where(p => p.NetId != currentPlayer.NetId);
+            Player? otherPlayer = otherPlayers.FirstOrDefault();
+            if (otherPlayer == null)
+            {
+                return;
+            }
+
+            CardCreationOptions options = AccessTools.Property(typeof(CardReward), "Options")?.GetValue(__instance) as CardCreationOptions;
+            if (options == null)
+            {
+                return;
+            }
+
+            if (options.CustomCardPool != null && options.CustomCardPool.Count() > 0)
+            {
+                return;
+            }
+
+            if (options.CardPools == null || options.CardPools.Count == 0)
+            {
+                return;
+            }
+
+            List<CardModel> otherPlayerCards = otherPlayer.Character.CardPool
+                .GetUnlockedCards(otherPlayer.UnlockState, otherPlayer.RunState.CardMultiplayerConstraint)
+                .ToList();
+
+            if (otherPlayerCards.Count == 0)
+            {
+                return;
+            }
+
+            IEnumerable<CardCreationResult> extraCards = CardFactory.CreateForReward(otherPlayer, 1, options.WithCustomPool(otherPlayerCards));
+            cards.AddRange(extraCards);
+
+            LocalMultiControlLogger.Info($"卡牌奖励已添加另一角色卡牌: currentPlayer={currentPlayer.NetId}, otherPlayer={otherPlayer.NetId}, extraCards={extraCards.Count()}");
+        }
+        catch (Exception ex)
+        {
+            LocalMultiControlLogger.Warn($"添加额外卡牌奖励失败: {ex.Message}");
+        }
+    }
+}
 
 [HarmonyPatch(typeof(CardReward), "OnSelect")]
 internal static class CardRewardPatch
