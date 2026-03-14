@@ -21,3 +21,5 @@ DualRoleAdventure.dll
 *.uid
 *.sln
 .dotnet
+/DualRoleAdventure.pck
+/DualRoleAdventure.dll

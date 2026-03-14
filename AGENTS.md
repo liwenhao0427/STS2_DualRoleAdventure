@@ -164,3 +164,9 @@
 
 - 若未来新增 `.cursor/rules/`、`.cursorrules`、`.github/copilot-instructions.md`，需在本文件同步关键约束。
 - 本文件是 `src/Mods/LocalMultiControl` 目录下代理执行任务的第一参考文档。
+
+## 15. 会话结束前默认部署动作（新增）
+
+- 当本次会话包含代码修改，且 `dotnet build LocalMultiControl.csproj -c Debug` 成功并产出项目根 `DualRoleAdventure.dll` 后，代理在会话结束前默认执行：`powershell -ExecutionPolicy Bypass -File .\copy_pck_to_game.ps1`。
+- 该步骤用于将最新 pck/dll 应用到游戏 `mods` 目录，作为联调默认收尾动作。
+- 若用户在当次会话中明确说明“不执行部署脚本”，则跳过此步骤。

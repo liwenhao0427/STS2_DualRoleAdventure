@@ -2,6 +2,19 @@ $ErrorActionPreference = "Stop"
 
 $modName = "DualRoleAdventure"
 $targetDir = "E:\SteamLibrary\steamapps\common\Slay the Spire 2\mods\$modName"
+$godotExePath = "E:\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64.exe"
+$exportPreset = "Windows Desktop"
+$exportPckPath = Join-Path $PSScriptRoot "$modName.pck"
+
+if (-not (Test-Path -LiteralPath $godotExePath)) {
+    throw "Godot executable not found: $godotExePath"
+}
+
+Write-Host "Exporting pck: $exportPckPath"
+& $godotExePath --path $PSScriptRoot --export-pack $exportPreset $exportPckPath
+if ($LASTEXITCODE -ne 0) {
+    throw "Godot export-pack failed with exit code: $LASTEXITCODE"
+}
 
 $pckCandidates = @(
     (Join-Path $PSScriptRoot "$modName.pck"),
