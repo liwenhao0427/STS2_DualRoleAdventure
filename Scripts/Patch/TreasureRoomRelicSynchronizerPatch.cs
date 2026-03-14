@@ -13,7 +13,7 @@ namespace LocalMultiControl.Scripts.Patch;
 internal static class TreasureRoomRelicSynchronizerPatch
 {
     [HarmonyPrefix]
-    private static void Prefix(TreasureRoomRelicSynchronizer __instance, Player player)
+    private static void Prefix(TreasureRoomRelicSynchronizer __instance, Player player, int index)
     {
         if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
         {
@@ -32,15 +32,23 @@ internal static class TreasureRoomRelicSynchronizerPatch
             }
 
             int pickedPlayerSlot = players.GetPlayerSlotIndex(player);
+            HashSet<int> avoidVotes = new HashSet<int> { index };
             bool hasPendingVote = false;
             for (int i = 0; i < votes.Count; i++)
             {
-                if (i == pickedPlayerSlot || votes[i].HasValue)
+                if (i == pickedPlayerSlot)
                 {
                     continue;
                 }
 
-                votes[i] = rng.NextInt(currentRelics.Count);
+                if (votes[i].HasValue)
+                {
+                    avoidVotes.Add(votes[i]!.Value);
+                    continue;
+                }
+
+                votes[i] = RollVoteAvoidingKnownPicks(currentRelics.Count, avoidVotes, rng);
+                avoidVotes.Add(votes[i]!.Value);
                 hasPendingVote = true;
             }
 
@@ -53,5 +61,30 @@ internal static class TreasureRoomRelicSynchronizerPatch
         {
             LocalMultiControlLogger.Warn($"宝箱随机投票补齐失败: {exception.Message}");
         }
+    }
+
+    private static int RollVoteAvoidingKnownPicks(int relicCount, HashSet<int> avoidVotes, Rng rng)
+    {
+        if (relicCount <= 1)
+        {
+            return 0;
+        }
+
+        if (avoidVotes.Count >= relicCount)
+        {
+            return rng.NextInt(relicCount);
+        }
+
+        int start = rng.NextInt(relicCount);
+        for (int offset = 0; offset < relicCount; offset++)
+        {
+            int candidate = (start + offset) % relicCount;
+            if (!avoidVotes.Contains(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return rng.NextInt(relicCount);
     }
 }

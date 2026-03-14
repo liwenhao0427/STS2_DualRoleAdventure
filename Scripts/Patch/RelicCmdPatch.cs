@@ -1,11 +1,14 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Patch;
@@ -13,6 +16,13 @@ namespace LocalMultiControl.Scripts.Patch;
 [HarmonyPatch(typeof(RelicCmd), nameof(RelicCmd.Obtain), new[] { typeof(RelicModel), typeof(Player), typeof(int) })]
 internal static class RelicCmdObtainPatch
 {
+    private static readonly HashSet<RelicModel> NonSharedTreasureRelics = new HashSet<RelicModel>(ReferenceEqualityComparer.Instance);
+
+    internal static bool TryConsumeNonSharedTreasureRelic(RelicModel relic)
+    {
+        return NonSharedTreasureRelics.Remove(relic);
+    }
+
     [HarmonyPostfix]
     private static void Postfix(Player player, ref Task<RelicModel> __result)
     {
@@ -29,6 +39,13 @@ internal static class RelicCmdObtainPatch
 
         if (player.RunState == null || player.RunState.Players == null || player.RunState.Players.Count != 2)
         {
+            return obtainedRelic;
+        }
+
+        if (player.RunState.CurrentRoom is TreasureRoom)
+        {
+            NonSharedTreasureRelics.Add(obtainedRelic);
+            LocalMultiControlLogger.Info($"宝箱遗物按独立策略处理，不做共享镜像: relic={obtainedRelic.Id.Entry}, owner={player.NetId}");
             return obtainedRelic;
         }
 
@@ -71,6 +88,11 @@ internal static class RelicCmdRemovePatch
     private static async Task MirrorRemoveForOtherLocalPlayerAsync(RelicModel removedRelic, Task originalTask)
     {
         await originalTask;
+        if (RelicCmdObtainPatch.TryConsumeNonSharedTreasureRelic(removedRelic))
+        {
+            return;
+        }
+
         if (!LocalSelfCoopContext.IsEnabled || removedRelic.Owner?.RunState == null)
         {
             return;

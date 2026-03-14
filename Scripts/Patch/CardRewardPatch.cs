@@ -29,85 +29,10 @@ namespace LocalMultiControl.Scripts.Patch;
 [HarmonyPatch(typeof(CardReward), "Populate")]
 internal static class CardRewardPatchPopulate
 {
-    private const int DefaultOptionCount = 3;
-
     [HarmonyPostfix]
     private static void Postfix(CardReward __instance)
     {
-        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
-        {
-            return;
-        }
-
-        try
-        {
-            Player currentPlayer = __instance.Player;
-            if (currentPlayer == null || currentPlayer.RunState == null)
-            {
-                return;
-            }
-
-            IRunState runState = currentPlayer.RunState;
-            Player? otherPlayer = runState.Players.FirstOrDefault((player) => player.NetId != currentPlayer.NetId);
-            if (otherPlayer == null)
-            {
-                return;
-            }
-
-            List<CardCreationResult>? cards = AccessTools.Field(typeof(CardReward), "_cards")?.GetValue(__instance) as List<CardCreationResult>;
-            if (cards == null)
-            {
-                return;
-            }
-
-            int optionCount = AccessTools.Property(typeof(CardReward), "OptionCount")?.GetValue(__instance) as int? ?? DefaultOptionCount;
-            if (cards.Count != optionCount)
-            {
-                // 幂等保护：Populate 在 reroll 等场景可能重复触发，已扩展过则不再追加。
-                return;
-            }
-
-            CardCreationOptions? options = AccessTools.Property(typeof(CardReward), "Options")?.GetValue(__instance) as CardCreationOptions;
-            if (options == null)
-            {
-                return;
-            }
-
-            if (options.CustomCardPool != null && options.CustomCardPool.Count() > 0)
-            {
-                return;
-            }
-
-            if (options.CardPools == null || options.CardPools.Count == 0)
-            {
-                return;
-            }
-
-            if (runState.CurrentRoom is not CombatRoom)
-            {
-                return;
-            }
-
-            CardCreationOptions otherPlayerOptions = (options with { }).WithCardPools(new[] { otherPlayer.Character.CardPool }, options.CardPoolFilter);
-            IReadOnlyList<CardCreationResult> extraCards = CardFactory.CreateForReward(otherPlayer, optionCount, otherPlayerOptions).ToList();
-            if (extraCards.Count <= 0)
-            {
-                return;
-            }
-
-            cards.AddRange(extraCards);
-            NCardRewardSelectionScreen? currentScreen = AccessTools.Field(typeof(CardReward), "_currentlyShownScreen")?.GetValue(__instance) as NCardRewardSelectionScreen;
-            if (currentScreen != null)
-            {
-                currentScreen.RefreshOptions(cards, CardRewardAlternative.Generate(__instance));
-            }
-
-            LocalMultiControlLogger.Info($"卡牌奖励已追加另一角色卡池候选: currentPlayer={currentPlayer.NetId}, otherPlayer={otherPlayer.NetId}, added={extraCards.Count}");
-        }
-        catch (Exception ex)
-        {
-            LocalMultiControlLogger.Warn($"添加额外卡牌奖励组失败: {ex.Message}");
-        }
+        // 已改由 RewardsCmdPatch 直接添加第二个 CardReward 条目，这里不再拼接 6 选 1。
     }
 }
 
@@ -128,7 +53,7 @@ internal static class CardRewardPatch
 
     private static async Task<bool> SelectForCurrentControlledPlayer(CardReward reward)
     {
-        LocalMultiControlLogger.Info("卡牌奖励已切换为当前控制角色归属模式。");
+        LocalMultiControlLogger.Info($"卡牌奖励选择开始，归属固定到奖励拥有者: player={reward.Player.NetId}");
 
         bool removeReward = false;
         List<CardModel> chosenCards = new List<CardModel>();
@@ -167,7 +92,7 @@ internal static class CardRewardPatch
 
             if (selectedCardTemplate != null)
             {
-                Player receiver = ResolveCurrentControlledPlayer(reward.Player);
+                Player receiver = reward.Player;
                 CardModel cardToAdd = selectedCardTemplate;
                 if (selectedCardTemplate.Owner != receiver)
                 {
@@ -212,7 +137,7 @@ internal static class CardRewardPatch
 
         reward.Player.RelicObtained -= onRelicObtainedHandler;
 
-        Player finalReceiver = ResolveCurrentControlledPlayer(reward.Player);
+        Player finalReceiver = reward.Player;
         foreach (CardModel card in chosenCards)
         {
             finalReceiver.RunState.CurrentMapPointHistoryEntry?.GetEntry(finalReceiver.NetId).CardChoices.Add(new CardChoiceHistoryEntry(card, wasPicked: true));
@@ -234,12 +159,6 @@ internal static class CardRewardPatch
         }
 
         return removeReward;
-    }
-
-    private static Player ResolveCurrentControlledPlayer(Player fallback)
-    {
-        ulong currentPlayerId = LocalContext.NetId ?? fallback.NetId;
-        return fallback.RunState.GetPlayer(currentPlayerId) ?? fallback;
     }
 }
 
