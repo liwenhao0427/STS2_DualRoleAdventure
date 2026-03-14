@@ -17,34 +17,60 @@ internal static class LoadRunLobbyPatch
             return;
         }
 
-        ulong secondaryPlayerId = LocalSelfCoopContext.SecondaryPlayerId;
-        if (__instance.Run.Players.All((player) => player.NetId != secondaryPlayerId))
+        List<ulong> localPlayerIdsInRun = __instance.Run.Players
+            .Select((player) => player.NetId)
+            .Where((id) => LocalSelfCoopContext.LocalPlayerIds.Contains(id))
+            .Distinct()
+            .ToList();
+        if (localPlayerIdsInRun.Count <= 1)
         {
-            LocalMultiControlLogger.Warn($"读档大厅未找到本地2号位玩家: {secondaryPlayerId}");
             return;
         }
 
         HashSet<ulong>? readyPlayers = AccessTools.Field(typeof(LoadRunLobby), "_readyPlayers")?.GetValue(__instance) as HashSet<ulong>;
+        ulong localHostId = __instance.NetService.NetId;
+
         if (ready)
         {
-            if (__instance.ConnectedPlayerIds.Add(secondaryPlayerId))
+            foreach (ulong playerId in localPlayerIdsInRun)
             {
-                __instance.LobbyListener.PlayerConnected(secondaryPlayerId);
-            }
+                if (playerId == localHostId)
+                {
+                    continue;
+                }
 
-            if (readyPlayers != null && readyPlayers.Add(secondaryPlayerId))
-            {
-                __instance.LobbyListener.PlayerReadyChanged(secondaryPlayerId);
+                if (__instance.ConnectedPlayerIds.Add(playerId))
+                {
+                    __instance.LobbyListener.PlayerConnected(playerId);
+                }
+
+                if (readyPlayers != null && readyPlayers.Add(playerId))
+                {
+                    __instance.LobbyListener.PlayerReadyChanged(playerId);
+                }
             }
 
             AccessTools.Method(typeof(LoadRunLobby), "BeginRunIfAllPlayersReady")?.Invoke(__instance, new object[] { });
-            LocalMultiControlLogger.Info($"本地双人读档自动就绪: 已补齐玩家 {secondaryPlayerId}");
+            LocalMultiControlLogger.Info($"本地多控读档自动就绪: players={string.Join(",", localPlayerIdsInRun)}");
             return;
         }
 
-        if (readyPlayers != null && readyPlayers.Remove(secondaryPlayerId))
+        if (readyPlayers == null)
         {
-            __instance.LobbyListener.PlayerReadyChanged(secondaryPlayerId);
+            return;
+        }
+
+        foreach (ulong playerId in localPlayerIdsInRun)
+        {
+            if (playerId == localHostId)
+            {
+                continue;
+            }
+
+            if (readyPlayers.Remove(playerId))
+            {
+                __instance.LobbyListener.PlayerReadyChanged(playerId);
+            }
         }
     }
 }

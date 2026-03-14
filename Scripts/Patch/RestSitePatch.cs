@@ -113,7 +113,7 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
 
         try
         {
-            await TryRunSecondSmithFlowAsync(synchronizer, localPlayerId!.Value);
+            await TryRunRemainingSmithFlowAsync(synchronizer, localPlayerId!.Value);
         }
         finally
         {
@@ -134,32 +134,37 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
         return options[optionIndex] is SmithRestSiteOption;
     }
 
-    private static async Task TryRunSecondSmithFlowAsync(RestSiteSynchronizer synchronizer, ulong sourcePlayerId)
+    private static async Task TryRunRemainingSmithFlowAsync(RestSiteSynchronizer synchronizer, ulong sourcePlayerId)
     {
         RunState? runState = RunManager.Instance.DebugOnlyGetState();
-        if (runState == null || runState.Players.Count != 2)
+        if (runState == null || runState.Players.Count <= 1)
         {
             return;
         }
 
-        Player? otherPlayer = runState.Players.FirstOrDefault((candidate) => candidate.NetId != sourcePlayerId);
-        if (otherPlayer == null)
+        List<Player> otherPlayers = runState.Players
+            .Where((candidate) => candidate.NetId != sourcePlayerId)
+            .ToList();
+        if (otherPlayers.Count == 0)
         {
             return;
         }
 
-        IReadOnlyList<RestSiteOption> existingOptions = synchronizer.GetOptionsForPlayer(otherPlayer.NetId);
-        int smithOptionIndex = FindSmithOptionIndex(existingOptions);
-        if (smithOptionIndex < 0)
+        foreach (Player otherPlayer in otherPlayers)
         {
-            LocalMultiControlLogger.Info($"休息区升级串行跳过：另一名角色无可用升级选项。player={otherPlayer.NetId}");
-            return;
-        }
+            IReadOnlyList<RestSiteOption> existingOptions = synchronizer.GetOptionsForPlayer(otherPlayer.NetId);
+            int smithOptionIndex = FindSmithOptionIndex(existingOptions);
+            if (smithOptionIndex < 0)
+            {
+                LocalMultiControlLogger.Info($"休息区升级串行跳过：该角色无可用升级选项。player={otherPlayer.NetId}");
+                continue;
+            }
 
-        LocalMultiControlLogger.Info($"休息区升级串行开始：{sourcePlayerId} -> {otherPlayer.NetId}");
-        LocalMultiControlRuntime.SwitchControlledPlayerTo(otherPlayer.NetId, "rest-site-auto-smith");
-        bool secondSelectionSuccess = await synchronizer.ChooseLocalOption(smithOptionIndex);
-        LocalMultiControlLogger.Info($"休息区升级串行结束：player={otherPlayer.NetId}, success={secondSelectionSuccess}");
+            LocalMultiControlLogger.Info($"休息区升级串行开始：{sourcePlayerId} -> {otherPlayer.NetId}");
+            LocalMultiControlRuntime.SwitchControlledPlayerTo(otherPlayer.NetId, "rest-site-auto-smith");
+            bool selectionSuccess = await synchronizer.ChooseLocalOption(smithOptionIndex);
+            LocalMultiControlLogger.Info($"休息区升级串行结束：player={otherPlayer.NetId}, success={selectionSuccess}");
+        }
     }
 
     private static int FindSmithOptionIndex(IReadOnlyList<RestSiteOption> options)

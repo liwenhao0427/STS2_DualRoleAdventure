@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
@@ -27,7 +27,7 @@ internal static class ActChangeSynchronizerPatch
         }
 
         RunState? runState = AccessTools.Field(typeof(ActChangeSynchronizer), "_runState")?.GetValue(__instance) as RunState;
-        if (runState == null || runState.Players.Count != 2)
+        if (runState == null || runState.Players.Count < 2)
         {
             return;
         }
@@ -38,23 +38,31 @@ internal static class ActChangeSynchronizerPatch
             return;
         }
 
-        Player? mirroredPlayer = runState.Players.FirstOrDefault((player) => player.NetId != localNetId.Value);
-        if (mirroredPlayer == null)
+        List<bool>? readyPlayers = AccessTools.Field(typeof(ActChangeSynchronizer), "_readyPlayers")?.GetValue(__instance) as List<bool>;
+        List<Player> pendingPlayers = runState.Players
+            .Where((player) => player.NetId != localNetId.Value)
+            .Where((player) =>
+            {
+                if (readyPlayers == null)
+                {
+                    return true;
+                }
+
+                int slot = runState.GetPlayerSlotIndex(player);
+                return slot < 0 || slot >= readyPlayers.Count || !readyPlayers[slot];
+            })
+            .ToList();
+        if (pendingPlayers.Count == 0)
         {
             return;
         }
 
-        List<bool>? readyPlayers = AccessTools.Field(typeof(ActChangeSynchronizer), "_readyPlayers")?.GetValue(__instance) as List<bool>;
-        if (readyPlayers != null)
+        foreach (Player mirroredPlayer in pendingPlayers)
         {
-            int mirroredSlot = runState.GetPlayerSlotIndex(mirroredPlayer);
-            if (mirroredSlot >= 0 && mirroredSlot < readyPlayers.Count && readyPlayers[mirroredSlot])
-            {
-                return;
-            }
+            RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(new VoteToMoveToNextActAction(mirroredPlayer));
         }
 
-        RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(new VoteToMoveToNextActAction(mirroredPlayer));
-        LocalMultiControlLogger.Info($"本地双人自动补齐下一幕就绪: local={localNetId.Value}, mirrored={mirroredPlayer.NetId}");
+        LocalMultiControlLogger.Info(
+            $"本地多控自动补齐下一幕就绪: local={localNetId.Value}, mirrored={string.Join(",", pendingPlayers.Select((player) => player.NetId))}");
     }
 }

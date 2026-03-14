@@ -16,10 +16,10 @@ internal static class StartRunLobbyReadyFixPatch
             return;
         }
 
-        if (__instance.Players.Count == 2 && __instance.Players.All((player) => player.isReady))
+        if (__instance.Players.Count >= 2 && __instance.Players.All((player) => player.isReady))
         {
             __result = true;
-            LocalMultiControlLogger.Info("本地双人大厅满足双人就绪条件，强制允许开始游戏。");
+            LocalMultiControlLogger.Info($"本地多控大厅满足就绪条件，强制允许开始游戏: players={__instance.Players.Count}");
         }
     }
 }

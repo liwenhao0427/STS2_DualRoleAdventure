@@ -155,7 +155,8 @@ internal static class LocalMultiControlRuntime
             if (combatState != null && combatState.GetPlayer(currentControlledPlayerId.Value) == null)
             {
                 LocalMultiControlLogger.Warn($"检测到无效战斗角色ID，回退到1号位: {currentControlledPlayerId.Value}");
-                if (Session.TrySetCurrentPlayer(LocalSelfCoopContext.PrimaryPlayerId))
+                ulong fallbackPlayerId = Session.OrderedPlayerIds.FirstOrDefault();
+                if (fallbackPlayerId != 0 && Session.TrySetCurrentPlayer(fallbackPlayerId))
                 {
                     currentControlledPlayerId = Session.CurrentControlledPlayerId;
                 }
@@ -195,7 +196,7 @@ internal static class LocalMultiControlRuntime
         LocalMultiControlLogger.Info($"控制上下文已更新: {previousNetId?.ToString() ?? "null"} -> {currentControlledPlayerId.Value}, source={source}");
         if (source != "run-launched")
         {
-            string slotLabel = currentControlledPlayerId.Value == LocalSelfCoopContext.PrimaryPlayerId ? "1" : "2";
+            string slotLabel = LocalSelfCoopContext.GetSlotLabel(currentControlledPlayerId.Value);
             NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"控制角色: 槽位{slotLabel}"));
         }
     }
@@ -315,10 +316,10 @@ internal static class LocalMultiControlRuntime
         }
 
         List<ulong> combatPlayerIds = combatState.Players.Select((player) => player.NetId).Distinct().ToList();
-        if (combatPlayerIds.Count != 2)
+        if (combatPlayerIds.Count < 2)
         {
             // 风险点：当前实现只保证“双角色本地多控”，人数异常时继续切换会引入不可预期 owner 绑定。
-            LocalMultiControlLogger.Warn($"战斗角色切换需要2名玩家，当前数量={combatPlayerIds.Count}");
+            LocalMultiControlLogger.Warn($"战斗角色切换需要至少2名玩家，当前数量={combatPlayerIds.Count}");
             return false;
         }
 

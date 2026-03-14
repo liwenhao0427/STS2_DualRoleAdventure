@@ -19,34 +19,47 @@ internal static class NGameInputPatch
 
         Key keycode = keyEvent.Keycode;
         Key physicalKeycode = keyEvent.PhysicalKeycode;
-        if (keycode == Key.Bracketleft || physicalKeycode == Key.Bracketleft)
+
+        bool isPrevious = keycode == Key.Bracketleft ||
+                          physicalKeycode == Key.Bracketleft ||
+                          keycode == Key.T ||
+                          physicalKeycode == Key.T;
+
+        bool isNext = keycode == Key.Bracketright ||
+                      physicalKeycode == Key.Bracketright ||
+                      keycode == Key.R ||
+                      physicalKeycode == Key.R ||
+                      keycode == Key.Slash ||
+                      physicalKeycode == Key.Slash;
+
+        if (!isPrevious && !isNext)
         {
-            LocalMultiControlLogger.Info("检测到切换热键: [");
+            return;
+        }
+
+        if (isPrevious)
+        {
+            LocalMultiControlLogger.Info("检测到切换热键: [ / T (反切)");
             if (RunManager.Instance.IsInProgress)
             {
-                LocalMultiControlRuntime.SwitchPreviousControlledPlayer("hotkey:[");
+                LocalMultiControlRuntime.SwitchPreviousControlledPlayer("hotkey:[/T");
             }
             else
             {
                 LocalSelfCoopContext.SwitchLobbyEditingPlayer(next: false);
             }
+
+            return;
         }
-        else if (keycode == Key.Bracketright ||
-                 physicalKeycode == Key.Bracketright ||
-                 keycode == Key.Slash ||
-                 physicalKeycode == Key.Slash ||
-                 keycode == Key.R ||
-                 physicalKeycode == Key.R)
+
+        LocalMultiControlLogger.Info("检测到切换热键: ] / R (正切)");
+        if (RunManager.Instance.IsInProgress)
         {
-            LocalMultiControlLogger.Info("检测到切换热键: ]/R");
-            if (RunManager.Instance.IsInProgress)
-            {
-                LocalMultiControlRuntime.SwitchNextControlledPlayer("hotkey:]/R");
-            }
-            else
-            {
-                LocalSelfCoopContext.SwitchLobbyEditingPlayer(next: true);
-            }
+            LocalMultiControlRuntime.SwitchNextControlledPlayer("hotkey:]/R");
+        }
+        else
+        {
+            LocalSelfCoopContext.SwitchLobbyEditingPlayer(next: true);
         }
     }
 }

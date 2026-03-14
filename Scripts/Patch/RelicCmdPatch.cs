@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Commands;
-using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Rooms;
@@ -16,7 +15,7 @@ namespace LocalMultiControl.Scripts.Patch;
 [HarmonyPatch(typeof(RelicCmd), nameof(RelicCmd.Obtain), new[] { typeof(RelicModel), typeof(Player), typeof(int) })]
 internal static class RelicCmdObtainPatch
 {
-    private static readonly HashSet<RelicModel> NonSharedTreasureRelics = new HashSet<RelicModel>(ReferenceEqualityComparer.Instance);
+    private static readonly HashSet<RelicModel> NonSharedTreasureRelics = new(ReferenceEqualityComparer.Instance);
 
     internal static bool TryConsumeNonSharedTreasureRelic(RelicModel relic)
     {
@@ -26,10 +25,10 @@ internal static class RelicCmdObtainPatch
     [HarmonyPostfix]
     private static void Postfix(Player player, ref Task<RelicModel> __result)
     {
-        __result = MirrorObtainForOtherLocalPlayerAsync(player, __result);
+        __result = MirrorObtainForOtherLocalPlayersAsync(player, __result);
     }
 
-    private static async Task<RelicModel> MirrorObtainForOtherLocalPlayerAsync(Player player, Task<RelicModel> originalTask)
+    private static async Task<RelicModel> MirrorObtainForOtherLocalPlayersAsync(Player player, Task<RelicModel> originalTask)
     {
         RelicModel obtainedRelic = await originalTask;
         if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
@@ -37,7 +36,7 @@ internal static class RelicCmdObtainPatch
             return obtainedRelic;
         }
 
-        if (player.RunState == null || player.RunState.Players == null || player.RunState.Players.Count != 2)
+        if (player.RunState?.Players == null || player.RunState.Players.Count <= 1)
         {
             return obtainedRelic;
         }
@@ -49,27 +48,24 @@ internal static class RelicCmdObtainPatch
             return obtainedRelic;
         }
 
-        Player? otherPlayer = player.RunState.Players.FirstOrDefault((candidate) => candidate.NetId != player.NetId);
-        if (otherPlayer == null)
+        foreach (Player otherPlayer in player.RunState.Players.Where((candidate) => candidate.NetId != player.NetId))
         {
-            return obtainedRelic;
-        }
+            if (!obtainedRelic.IsStackable && otherPlayer.GetRelicById(obtainedRelic.Id) != null)
+            {
+                continue;
+            }
 
-        if (!obtainedRelic.IsStackable && otherPlayer.GetRelicById(obtainedRelic.Id) != null)
-        {
-            return obtainedRelic;
-        }
-
-        try
-        {
-            RelicModel mirroredRelic = RelicModel.FromSerializable(obtainedRelic.ToSerializable());
-            otherPlayer.AddRelicInternal(mirroredRelic);
-            await mirroredRelic.AfterObtained();
-            LocalMultiControlLogger.Info($"本地双人共享遗物同步: {obtainedRelic.Id.Entry}, {player.NetId} -> {otherPlayer.NetId}");
-        }
-        catch (Exception exception)
-        {
-            LocalMultiControlLogger.Warn($"共享遗物同步失败(获得): {exception.Message}");
+            try
+            {
+                RelicModel mirroredRelic = RelicModel.FromSerializable(obtainedRelic.ToSerializable());
+                otherPlayer.AddRelicInternal(mirroredRelic);
+                await mirroredRelic.AfterObtained();
+                LocalMultiControlLogger.Info($"本地多控共享遗物同步: {obtainedRelic.Id.Entry}, {player.NetId} -> {otherPlayer.NetId}");
+            }
+            catch (Exception exception)
+            {
+                LocalMultiControlLogger.Warn($"共享遗物同步失败(获得): target={otherPlayer.NetId}, error={exception.Message}");
+            }
         }
 
         return obtainedRelic;
@@ -82,10 +78,10 @@ internal static class RelicCmdRemovePatch
     [HarmonyPostfix]
     private static void Postfix(RelicModel relic, ref Task __result)
     {
-        __result = MirrorRemoveForOtherLocalPlayerAsync(relic, __result);
+        __result = MirrorRemoveForOtherLocalPlayersAsync(relic, __result);
     }
 
-    private static async Task MirrorRemoveForOtherLocalPlayerAsync(RelicModel removedRelic, Task originalTask)
+    private static async Task MirrorRemoveForOtherLocalPlayersAsync(RelicModel removedRelic, Task originalTask)
     {
         await originalTask;
         if (RelicCmdObtainPatch.TryConsumeNonSharedTreasureRelic(removedRelic))
@@ -99,27 +95,29 @@ internal static class RelicCmdRemovePatch
         }
 
         IRunState runState = removedRelic.Owner.RunState;
-        if (runState.Players.Count != 2)
+        if (runState.Players.Count <= 1)
         {
             return;
         }
 
-        Player? otherPlayer = runState.Players.FirstOrDefault((candidate) => candidate.NetId != removedRelic.Owner.NetId);
-        RelicModel? mirroredRelic = otherPlayer?.GetRelicById(removedRelic.Id);
-        if (mirroredRelic == null)
+        foreach (Player otherPlayer in runState.Players.Where((candidate) => candidate.NetId != removedRelic.Owner.NetId))
         {
-            return;
-        }
+            RelicModel? mirroredRelic = otherPlayer.GetRelicById(removedRelic.Id);
+            if (mirroredRelic == null)
+            {
+                continue;
+            }
 
-        try
-        {
-            otherPlayer!.RemoveRelicInternal(mirroredRelic);
-            await mirroredRelic.AfterRemoved();
-            LocalMultiControlLogger.Info($"本地双人共享遗物同步移除: {removedRelic.Id.Entry}, owner={otherPlayer.NetId}");
-        }
-        catch (Exception exception)
-        {
-            LocalMultiControlLogger.Warn($"共享遗物同步失败(移除): {exception.Message}");
+            try
+            {
+                otherPlayer.RemoveRelicInternal(mirroredRelic);
+                await mirroredRelic.AfterRemoved();
+                LocalMultiControlLogger.Info($"本地多控共享遗物同步移除: {removedRelic.Id.Entry}, owner={otherPlayer.NetId}");
+            }
+            catch (Exception exception)
+            {
+                LocalMultiControlLogger.Warn($"共享遗物同步失败(移除): target={otherPlayer.NetId}, error={exception.Message}");
+            }
         }
     }
 }

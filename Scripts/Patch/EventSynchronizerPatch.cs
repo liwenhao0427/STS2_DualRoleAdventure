@@ -99,12 +99,18 @@ internal static class EventSynchronizerPatch
 
             IPlayerCollection? playerCollection = AccessTools.Field(typeof(EventSynchronizer), "_playerCollection")?.GetValue(synchronizer) as IPlayerCollection;
             List<uint?>? votes = AccessTools.Field(typeof(EventSynchronizer), "_playerVotes")?.GetValue(synchronizer) as List<uint?>;
-            if (playerCollection == null || votes == null || playerCollection.Players.Count != 2 || votes.Count < 2)
+            if (playerCollection == null || votes == null)
             {
                 return;
             }
 
-            List<Player> players = playerCollection.Players.ToList();
+            int sharedCount = Math.Min(playerCollection.Players.Count, votes.Count);
+            if (sharedCount < 2)
+            {
+                return;
+            }
+
+            List<Player> players = playerCollection.Players.Take(sharedCount).ToList();
             ulong localPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId
                 ?? LocalContext.NetId
                 ?? LocalSelfCoopContext.PrimaryPlayerId;
@@ -120,27 +126,33 @@ internal static class EventSynchronizerPatch
                 return;
             }
 
-            int otherSlot = (localSlot + 1) % 2;
             uint selectedOption = (uint)index;
-            bool hadCrossPageVoteResidual = votes.All((vote) => vote.HasValue) &&
-                votes.Any((vote) => vote.HasValue && vote.Value != selectedOption);
-            if (hadCrossPageVoteResidual)
+            votes[localSlot] = selectedOption;
+            int filledCount = 1;
+            for (int i = 0; i < sharedCount; i++)
             {
-                LocalMultiControlLogger.Warn($"检测到共享事件残留投票，已覆盖为当前选项: option={index}");
+                if (i == localSlot)
+                {
+                    continue;
+                }
+
+                if (!votes[i].HasValue || votes[i]!.Value != selectedOption)
+                {
+                    votes[i] = selectedOption;
+                }
+
+                filledCount++;
             }
 
-            votes[localSlot] = selectedOption;
-            votes[otherSlot] = selectedOption;
-            LocalMultiControlLogger.Info($"共享事件自动代投: slot{otherSlot} -> option={index}");
-
-            if (votes.All((vote) => vote.HasValue) && netService.Type != NetGameType.Client)
+            LocalMultiControlLogger.Info($"共享事件自动补齐投票: option={index}, filled={filledCount}/{sharedCount}");
+            if (votes.Take(sharedCount).All((vote) => vote.HasValue) && netService.Type != NetGameType.Client)
             {
                 TryChooseSharedEventOptionDeferred(synchronizer);
             }
         }
         catch (Exception exception)
         {
-            LocalMultiControlLogger.Warn($"共享事件自动代投失败: {exception.Message}");
+            LocalMultiControlLogger.Warn($"共享事件自动补票失败: {exception.Message}");
         }
     }
 
@@ -158,7 +170,7 @@ internal static class EventSynchronizerPatch
             try
             {
                 AccessTools.Method(typeof(EventSynchronizer), "ChooseSharedEventOption")?.Invoke(synchronizer, Array.Empty<object>());
-                LocalMultiControlLogger.Info("共享事件自动代投已补齐，已触发结算。");
+                LocalMultiControlLogger.Info("共享事件自动补票完成，已触发结算。");
             }
             catch (Exception exception)
             {

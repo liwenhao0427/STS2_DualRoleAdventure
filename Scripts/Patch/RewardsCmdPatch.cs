@@ -19,7 +19,7 @@ internal static class RewardsCmdPatch
     [HarmonyPrefix]
     private static bool Prefix(Player player, AbstractRoom room, ref Task __result)
     {
-        if (!LocalSelfCoopContext.IsEnabled || room is not CombatRoom combatRoom || player.RunState.Players.Count != 2)
+        if (!LocalSelfCoopContext.IsEnabled || room is not CombatRoom combatRoom || player.RunState.Players.Count <= 1)
         {
             return true;
         }
@@ -37,24 +37,20 @@ internal static class RewardsCmdPatch
             return;
         }
 
-        RewardsSet rewardsSet;
-        if (combatRoom.Encounter != null && !combatRoom.Encounter.ShouldGiveRewards)
-        {
-            rewardsSet = new RewardsSet(rewardPlayer).EmptyForRoom(combatRoom);
-        }
-        else
-        {
-            rewardsSet = new RewardsSet(rewardPlayer).WithRewardsFromRoom(combatRoom);
-        }
+        RewardsSet rewardsSet = combatRoom.Encounter != null && !combatRoom.Encounter.ShouldGiveRewards
+            ? new RewardsSet(rewardPlayer).EmptyForRoom(combatRoom)
+            : new RewardsSet(rewardPlayer).WithRewardsFromRoom(combatRoom);
 
-        AppendSecondCardRewardForOtherPlayer(combatRoom, rewardsSet, rewardPlayer);
+        AppendCardRewardsForOtherPlayers(combatRoom, rewardsSet, rewardPlayer);
         await rewardsSet.Offer();
     }
 
-    private static void AppendSecondCardRewardForOtherPlayer(CombatRoom combatRoom, RewardsSet rewardsSet, Player currentPlayer)
+    private static void AppendCardRewardsForOtherPlayers(CombatRoom combatRoom, RewardsSet rewardsSet, Player currentPlayer)
     {
-        Player? otherPlayer = currentPlayer.RunState.Players.FirstOrDefault((player) => player.NetId != currentPlayer.NetId);
-        if (otherPlayer == null)
+        List<Player> otherPlayers = currentPlayer.RunState.Players
+            .Where((player) => player.NetId != currentPlayer.NetId)
+            .ToList();
+        if (otherPlayers.Count == 0)
         {
             return;
         }
@@ -63,28 +59,39 @@ internal static class RewardsCmdPatch
             .OfType<CardReward>()
             .Where((reward) => reward.Player.NetId == currentPlayer.NetId)
             .ToList();
+        if (primaryCardRewards.Count == 0)
+        {
+            return;
+        }
+
+        int extraRewardCount = 0;
         foreach (CardReward primaryCardReward in primaryCardRewards)
         {
             int optionCount = AccessTools.Property(typeof(CardReward), "OptionCount")?.GetValue(primaryCardReward) as int? ?? 3;
-            CardReward secondaryCardReward = new CardReward(CardCreationOptions.ForRoom(otherPlayer, combatRoom.RoomType), optionCount, otherPlayer)
+            int insertOffset = 1;
+            foreach (Player otherPlayer in otherPlayers)
             {
-                CanReroll = primaryCardReward.CanReroll
-            };
+                CardReward extraCardReward = new(CardCreationOptions.ForRoom(otherPlayer, combatRoom.RoomType), optionCount, otherPlayer)
+                {
+                    CanReroll = primaryCardReward.CanReroll
+                };
 
-            int insertIndex = rewardsSet.Rewards.IndexOf(primaryCardReward);
-            if (insertIndex >= 0)
-            {
-                rewardsSet.Rewards.Insert(insertIndex + 1, secondaryCardReward);
-            }
-            else
-            {
-                rewardsSet.Rewards.Add(secondaryCardReward);
+                int insertIndex = rewardsSet.Rewards.IndexOf(primaryCardReward);
+                if (insertIndex >= 0)
+                {
+                    rewardsSet.Rewards.Insert(insertIndex + insertOffset, extraCardReward);
+                }
+                else
+                {
+                    rewardsSet.Rewards.Add(extraCardReward);
+                }
+
+                insertOffset++;
+                extraRewardCount++;
             }
         }
 
-        if (primaryCardRewards.Count > 0)
-        {
-            LocalMultiControlLogger.Info($"战后奖励已扩展为双卡池条目: playerA={currentPlayer.NetId}, playerB={otherPlayer.NetId}, groups={primaryCardRewards.Count * 2}");
-        }
+        LocalMultiControlLogger.Info(
+            $"战后奖励已扩展额外卡池: owner={currentPlayer.NetId}, extraPlayers={otherPlayers.Count}, extraRewards={extraRewardCount}");
     }
 }

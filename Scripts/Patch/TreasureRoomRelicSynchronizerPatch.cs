@@ -4,7 +4,6 @@ using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
-using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Patch;
@@ -24,15 +23,14 @@ internal static class TreasureRoomRelicSynchronizerPatch
         {
             List<int?>? votes = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_votes")?.GetValue(__instance) as List<int?>;
             IReadOnlyList<MegaCrit.Sts2.Core.Models.RelicModel>? currentRelics = __instance.CurrentRelics;
-            Rng? rng = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_rng")?.GetValue(__instance) as Rng;
             IPlayerCollection? players = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_playerCollection")?.GetValue(__instance) as IPlayerCollection;
-            if (votes == null || currentRelics == null || currentRelics.Count == 0 || rng == null || players == null)
+            if (votes == null || currentRelics == null || currentRelics.Count == 0 || players == null)
             {
                 return;
             }
 
             int pickedPlayerSlot = players.GetPlayerSlotIndex(player);
-            HashSet<int> avoidVotes = new HashSet<int> { index };
+            int targetVote = Math.Clamp(index, 0, currentRelics.Count - 1);
             bool hasPendingVote = false;
             for (int i = 0; i < votes.Count; i++)
             {
@@ -43,48 +41,21 @@ internal static class TreasureRoomRelicSynchronizerPatch
 
                 if (votes[i].HasValue)
                 {
-                    avoidVotes.Add(votes[i]!.Value);
                     continue;
                 }
 
-                votes[i] = RollVoteAvoidingKnownPicks(currentRelics.Count, avoidVotes, rng);
-                avoidVotes.Add(votes[i]!.Value);
+                votes[i] = targetVote;
                 hasPendingVote = true;
             }
 
             if (hasPendingVote)
             {
-                LocalMultiControlLogger.Info("本地双人模式已自动补齐宝箱投票（随机），交由原始流程继续结算。");
+                LocalMultiControlLogger.Info($"本地多控已自动补齐宝箱投票（跟随当前选择）: option={targetVote}");
             }
         }
         catch (Exception exception)
         {
-            LocalMultiControlLogger.Warn($"宝箱随机投票补齐失败: {exception.Message}");
+            LocalMultiControlLogger.Warn($"宝箱投票自动补齐失败: {exception.Message}");
         }
-    }
-
-    private static int RollVoteAvoidingKnownPicks(int relicCount, HashSet<int> avoidVotes, Rng rng)
-    {
-        if (relicCount <= 1)
-        {
-            return 0;
-        }
-
-        if (avoidVotes.Count >= relicCount)
-        {
-            return rng.NextInt(relicCount);
-        }
-
-        int start = rng.NextInt(relicCount);
-        for (int offset = 0; offset < relicCount; offset++)
-        {
-            int candidate = (start + offset) % relicCount;
-            if (!avoidVotes.Contains(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return rng.NextInt(relicCount);
     }
 }

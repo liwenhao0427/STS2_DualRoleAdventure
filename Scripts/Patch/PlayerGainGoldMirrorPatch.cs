@@ -26,15 +26,15 @@ internal static class PlayerGainGoldMirrorPatch
             return;
         }
 
-        __result = MirrorGoldToOtherPlayerAsync(amount, player, wasStolenBack, __result);
+        __result = MirrorGoldToOtherPlayersAsync(amount, player, wasStolenBack, __result);
     }
 
-    private static async Task MirrorGoldToOtherPlayerAsync(decimal amount, Player sourcePlayer, bool wasStolenBack, Task originalTask)
+    private static async Task MirrorGoldToOtherPlayersAsync(decimal amount, Player sourcePlayer, bool wasStolenBack, Task originalTask)
     {
         await originalTask;
 
-        Player? otherPlayer = sourcePlayer.RunState.Players.FirstOrDefault((candidate) => candidate.NetId != sourcePlayer.NetId);
-        if (otherPlayer == null)
+        var otherPlayers = sourcePlayer.RunState.Players.Where((candidate) => candidate.NetId != sourcePlayer.NetId).ToList();
+        if (otherPlayers.Count == 0)
         {
             return;
         }
@@ -42,9 +42,13 @@ internal static class PlayerGainGoldMirrorPatch
         IsMirroring.Value = true;
         try
         {
-            await PlayerCmd.GainGold(amount, otherPlayer, wasStolenBack);
+            foreach (Player otherPlayer in otherPlayers)
+            {
+                await PlayerCmd.GainGold(amount, otherPlayer, wasStolenBack);
+            }
+
             LocalMultiControlLogger.Info(
-                $"事件/流程金币已同步到另一角色: amount={amount}, owner={sourcePlayer.NetId}, mirrored={otherPlayer.NetId}");
+                $"事件/流程金币已同步到其余角色: amount={amount}, owner={sourcePlayer.NetId}, mirrored={string.Join(",", otherPlayers.Select((player) => player.NetId))}");
         }
         finally
         {

@@ -34,7 +34,7 @@ internal static class NMultiplayerHostSubmenuPatch
             NSubmenuButton? customButton = __instance.GetNodeOrNull<NSubmenuButton>("CustomRunButton");
             if (standardButton == null)
             {
-                LocalMultiControlLogger.Warn("未找到 StandardButton，无法注入本地双角色入口。");
+                LocalMultiControlLogger.Warn("未找到 StandardButton，无法注入本地多角色入口。");
                 return;
             }
 
@@ -51,11 +51,11 @@ internal static class NMultiplayerHostSubmenuPatch
             container.MoveChild(button, targetIndex);
 
             ArrangeFourButtonsHorizontally(standardButton, dailyButton, customButton, button);
-            LocalMultiControlLogger.Info("联机菜单已注入卡片样式入口：单人双角色（四卡并列）。");
+            LocalMultiControlLogger.Info("联机菜单已注入卡片样式入口：单人多角色（四卡并列）。");
         }
         catch (Exception exception)
         {
-            LocalMultiControlLogger.Error($"注入“单人双角色”入口失败: {exception}");
+            LocalMultiControlLogger.Error($"注入“单人多角色”入口失败: {exception}");
         }
     }
 
@@ -82,13 +82,13 @@ internal static class NMultiplayerHostSubmenuPatch
         Node? titleNode = button.FindChild("Title", recursive: true, owned: false);
         if (titleNode is Label title)
         {
-            title.Text = "单人双角色";
+            title.Text = "单人多角色";
         }
 
         Node? descriptionNode = button.FindChild("Description", recursive: true, owned: false);
         if (descriptionNode is RichTextLabel description)
         {
-            description.Text = "在本机创建两名可切换角色，进行本地双人协作。";
+            description.Text = "在本机创建最多四名可切换角色，进行本地协作。";
         }
     }
 
@@ -132,7 +132,7 @@ internal static class NMultiplayerHostSubmenuPatch
 
     private static void OnLocalSelfCoopPressed(NMultiplayerHostSubmenu submenu)
     {
-        LocalMultiControlLogger.Info("进入单人双角色流程。");
+        LocalMultiControlLogger.Info("进入单人多角色流程。");
         LocalSelfCoopSaveTag.ClearCurrentProfile();
         SaveManager.Instance.DeleteCurrentMultiplayerRun();
         LocalMultiControlLogger.Info("已清理历史多人存档，避免旧格式校验干扰。");
@@ -145,20 +145,20 @@ internal static class NMultiplayerHostSubmenuPatch
         }
 
         ulong primaryPlayerId = LocalSelfCoopContext.ResolvePrimaryPlayerId();
-        LocalSelfCoopSaveTag.MarkCurrentProfile(LocalSelfCoopContext.PrimaryPlayerId, LocalSelfCoopContext.SecondaryPlayerId);
+        LocalSelfCoopSaveTag.MarkCurrentProfile(LocalSelfCoopContext.LocalPlayerIds);
         LocalLoopbackHostGameService netService = new LocalLoopbackHostGameService(primaryPlayerId);
         LocalSelfCoopContext.Enable(netService);
 
         NCharacterSelectScreen characterSelectScreen = stack.GetSubmenuType<NCharacterSelectScreen>();
         LocalSelfCoopContext.ActiveCharacterSelectScreen = characterSelectScreen;
-        characterSelectScreen.InitializeMultiplayerAsHost(netService, 2);
-        if (!LocalSelfCoopContext.BootstrapSecondPlayer(characterSelectScreen))
+        characterSelectScreen.InitializeMultiplayerAsHost(netService, LocalSelfCoopContext.DesiredLocalPlayerCount);
+        if (!LocalSelfCoopContext.BootstrapLocalPlayers(characterSelectScreen))
         {
-            LocalMultiControlLogger.Warn("初始化本地双角色队伍失败，已回退到单入口行为。");
+            LocalMultiControlLogger.Warn("初始化本地多角色队伍失败，已回退到默认流程。");
         }
 
         stack.Push(characterSelectScreen);
-        LocalMultiControlLogger.Info("已跳转到双角色本地队伍角色选择界面。");
+        LocalMultiControlLogger.Info("已跳转到本地多角色队伍角色选择界面。");
     }
 
     private static NSubmenuStack? GetStack(NSubmenu submenu)
