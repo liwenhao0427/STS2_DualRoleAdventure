@@ -179,6 +179,14 @@
 - pck 生成成功后，再执行复制脚本：
   - `powershell -ExecutionPolicy Bypass -File .\copy_pck_to_game.ps1`
 
+## 17. 复制后自动启动游戏（新增）
+
+- 当执行 `copy_pck_to_game.ps1` 且复制成功后，代理默认自动打开：
+  - `steam://rungameid/2868840`
+- Windows 环境推荐命令：
+  - `Start-Process "steam://rungameid/2868840"`
+- 若用户在当次会话中明确说明“不自动启动游戏”，则跳过此步骤。
+
 ## 17. 发版流程
 
 - 发布资产限于项目根的 `DualRoleAdventure.dll` 与 `DualRoleAdventure.pck`（已通过 `.gitignore` 排除，不能提交源代码），其他源码继续版本控制。
