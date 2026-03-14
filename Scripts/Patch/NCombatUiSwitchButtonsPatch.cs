@@ -73,11 +73,11 @@ internal static class NCombatUiExitPatch
 internal static class LocalCombatSwitchButtons
 {
     private const string ContainerName = "LocalCombatSwitchContainer";
-    private const string UpButtonName = "LocalCombatSwitchUpButton";
-    private const string DownButtonName = "LocalCombatSwitchDownButton";
+    private const string PrevButtonName = "LocalCombatSwitchPrevButton";
+    private const string NextButtonName = "LocalCombatSwitchNextButton";
     private const string TrackerName = "LocalCombatSwitchTracker";
     private static readonly Vector2 PingShowPosRatio = new Vector2(1536f, 932f) / NGame.devResolution;
-    private static readonly Vector2 ButtonOffset = new Vector2(148f, 4f);
+    private static readonly Vector2 ButtonOffset = new Vector2(144f, 8f);
 
     public static void Ensure(NCombatUi combatUi)
     {
@@ -94,36 +94,36 @@ internal static class LocalCombatSwitchButtons
             ZIndex = 120
         };
 
-        LocalSimpleTextButton upButton = new LocalSimpleTextButton
+        LocalSimpleTextButton prevButton = new LocalSimpleTextButton
         {
-            Name = UpButtonName,
-            ButtonText = "上",
+            Name = PrevButtonName,
+            ButtonText = "<",
             FocusMode = Control.FocusModeEnum.None,
-            FontSize = 15,
-            Size = new Vector2(34f, 24f),
-            CustomMinimumSize = new Vector2(34f, 24f)
+            FontSize = 18,
+            Size = new Vector2(44f, 28f),
+            CustomMinimumSize = new Vector2(44f, 28f)
         };
-        upButton.Connect(
+        prevButton.Connect(
             MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl.SignalName.Released,
             Callable.From<MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl>((_) =>
                 LocalControlSwitchGuard.TrySwitchPrevious("combat-ui-up")));
-        container.AddChild(upButton);
+        container.AddChild(prevButton);
 
-        LocalSimpleTextButton downButton = new LocalSimpleTextButton
+        LocalSimpleTextButton nextButton = new LocalSimpleTextButton
         {
-            Name = DownButtonName,
-            ButtonText = "下",
+            Name = NextButtonName,
+            ButtonText = ">",
             FocusMode = Control.FocusModeEnum.None,
-            FontSize = 15,
-            Size = new Vector2(34f, 24f),
-            CustomMinimumSize = new Vector2(34f, 24f),
-            Position = new Vector2(0f, 26f)
+            FontSize = 18,
+            Size = new Vector2(44f, 28f),
+            CustomMinimumSize = new Vector2(44f, 28f),
+            Position = new Vector2(48f, 0f)
         };
-        downButton.Connect(
+        nextButton.Connect(
             MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl.SignalName.Released,
             Callable.From<MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl>((_) =>
                 LocalControlSwitchGuard.TrySwitchNext("combat-ui-down")));
-        container.AddChild(downButton);
+        container.AddChild(nextButton);
 
         combatUi.AddChildSafely(container);
         EnsureTracker(combatUi);

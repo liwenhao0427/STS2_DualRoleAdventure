@@ -45,6 +45,8 @@ internal static class LocalCharacterSelectCountButtons
     private const string PanelName = "LocalSelfCoopCountPanel";
     private const string MinusButtonName = "LocalSelfCoopMinusButton";
     private const string PlusButtonName = "LocalSelfCoopPlusButton";
+    private const string PrevButtonName = "LocalSelfCoopPrevButton";
+    private const string NextButtonName = "LocalSelfCoopNextButton";
 
     public static void Sync(NCharacterSelectScreen screen)
     {
@@ -79,15 +81,25 @@ internal static class LocalCharacterSelectCountButtons
             ZIndex = 80
         };
 
-        LocalSimpleTextButton minusButton = CreateCountButton(MinusButtonName, "-");
+        LocalSimpleTextButton minusButton = CreateCountButton(MinusButtonName, "<");
         minusButton.Connect(NClickableControl.SignalName.Released,
             Callable.From<NClickableControl>((_) => OnAdjustPlayerCount(-1)));
         panel.AddChild(minusButton);
 
-        LocalSimpleTextButton plusButton = CreateCountButton(PlusButtonName, "+");
+        LocalSimpleTextButton plusButton = CreateCountButton(PlusButtonName, ">");
         plusButton.Connect(NClickableControl.SignalName.Released,
             Callable.From<NClickableControl>((_) => OnAdjustPlayerCount(1)));
         panel.AddChild(plusButton);
+
+        LocalSimpleTextButton prevButton = CreateCountButton(PrevButtonName, "<");
+        prevButton.Connect(NClickableControl.SignalName.Released,
+            Callable.From<NClickableControl>((_) => OnSwitchLobbyPlayer(false)));
+        panel.AddChild(prevButton);
+
+        LocalSimpleTextButton nextButton = CreateCountButton(NextButtonName, ">");
+        nextButton.Connect(NClickableControl.SignalName.Released,
+            Callable.From<NClickableControl>((_) => OnSwitchLobbyPlayer(true)));
+        panel.AddChild(nextButton);
 
         screen.AddChildSafely(panel);
         LocalMultiControlLogger.Info("角色选择页已创建本地人数 +/- 实体按钮。");
@@ -101,9 +113,9 @@ internal static class LocalCharacterSelectCountButtons
             Name = name,
             ButtonText = text,
             FocusMode = Control.FocusModeEnum.None,
-            FontSize = 17,
-            Size = new Vector2(34f, 24f),
-            CustomMinimumSize = new Vector2(34f, 24f)
+            FontSize = 18,
+            Size = new Vector2(44f, 28f),
+            CustomMinimumSize = new Vector2(44f, 28f)
         };
         return button;
     }
@@ -119,7 +131,7 @@ internal static class LocalCharacterSelectCountButtons
 
         // 注意：该坐标经过实机对齐，目的是避免与确认按钮重叠导致 + 按钮不可点击。
         // 请不要随意改回靠右布局，如需改动先实测“+ 按钮在 2->3/4 人时可稳定点击”。
-        panel.Position = embarkButton.Position + new Vector2(-206f, 21f);
+        panel.Position = embarkButton.Position + new Vector2(-224f, 14f);
 
         if (panel.GetNodeOrNull<LocalSimpleTextButton>(MinusButtonName) is { } minusButton)
         {
@@ -128,7 +140,17 @@ internal static class LocalCharacterSelectCountButtons
 
         if (panel.GetNodeOrNull<LocalSimpleTextButton>(PlusButtonName) is { } plusButton)
         {
-            plusButton.Position = new Vector2(38f, 0f);
+            plusButton.Position = new Vector2(48f, 0f);
+        }
+
+        if (panel.GetNodeOrNull<LocalSimpleTextButton>(PrevButtonName) is { } prevButton)
+        {
+            prevButton.Position = new Vector2(0f, 32f);
+        }
+
+        if (panel.GetNodeOrNull<LocalSimpleTextButton>(NextButtonName) is { } nextButton)
+        {
+            nextButton.Position = new Vector2(48f, 32f);
         }
     }
 
@@ -154,5 +176,15 @@ internal static class LocalCharacterSelectCountButtons
         {
             Sync(activeScreen);
         }
+    }
+
+    private static void OnSwitchLobbyPlayer(bool next)
+    {
+        if (!LocalSelfCoopContext.IsEnabled)
+        {
+            return;
+        }
+
+        LocalSelfCoopContext.SwitchLobbyEditingPlayer(next);
     }
 }

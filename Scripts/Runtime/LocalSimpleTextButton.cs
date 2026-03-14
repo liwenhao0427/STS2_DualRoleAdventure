@@ -7,14 +7,14 @@ internal sealed partial class LocalSimpleTextButton : NButton
 {
     private const string ButtonTexturePath = "res://images/packed/common_ui/settings_tiny_left_arrow.png";
     private const string HsvShaderPath = "res://shaders/hsv.gdshader";
-    private static readonly Vector2 DefaultButtonSize = new Vector2(36f, 24f);
+    private static readonly Vector2 DefaultButtonSize = new Vector2(44f, 28f);
 
     private TextureRect? _image;
     private Label? _label;
     private ShaderMaterial? _hsv;
     private Tween? _hoverTween;
     private string _buttonText = string.Empty;
-    private int _fontSize = 16;
+    private int _fontSize = 18;
 
     public string ButtonText
     {

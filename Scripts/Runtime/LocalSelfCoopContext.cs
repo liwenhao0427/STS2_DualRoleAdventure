@@ -159,6 +159,35 @@ internal static class LocalSelfCoopContext
         return true;
     }
 
+    public static bool SetLobbyEditingPlayer(ulong playerId, string source)
+    {
+        if (!IsEnabled || NetService == null)
+        {
+            return false;
+        }
+
+        List<ulong> activePlayerIds = GetActiveLobbyLocalPlayerIds();
+        if (activePlayerIds.Count < MinLocalPlayerCount || !activePlayerIds.Contains(playerId))
+        {
+            return false;
+        }
+
+        ulong previousPlayerId = CurrentLobbyEditingPlayerId;
+        CurrentLobbyEditingPlayerId = playerId;
+        EnsureLobbySenderContext(source);
+        SyncCharacterSelectHighlight();
+
+        if (previousPlayerId != CurrentLobbyEditingPlayerId)
+        {
+            string slotLabel = GetSlotLabel(CurrentLobbyEditingPlayerId);
+            LocalMultiControlLogger.Info(
+                $"大厅编辑角色定向切换: {previousPlayerId} -> {CurrentLobbyEditingPlayerId} (槽位{slotLabel})");
+            NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"大厅编辑角色: 槽位{slotLabel}"));
+        }
+
+        return true;
+    }
+
     public static bool AdjustDesiredLocalPlayerCount(int delta, string source)
     {
         int oldCount = _desiredLocalPlayerCount;
@@ -557,4 +586,3 @@ internal static class LocalSelfCoopContext
         return ids;
     }
 }
-
