@@ -20,3 +20,4 @@ DualRoleAdventure.dll
 # Keep repository code-focused
 *.uid
 *.sln
+.dotnet
