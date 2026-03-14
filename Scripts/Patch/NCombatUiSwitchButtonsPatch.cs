@@ -118,7 +118,7 @@ internal static class LocalCombatSwitchButtons
             FontSize = 20,
             Size = new Vector2(140f, 32f),
             CustomMinimumSize = new Vector2(140f, 32f),
-            Position = new Vector2(148f, 0f),
+            Position = new Vector2(136f, 0f),
             ImageScale = Vector2.One * 1.5f,
             MirrorImageX = true
         };

@@ -47,6 +47,8 @@ internal static class LocalCharacterSelectCountButtons
     private const string PlusButtonName = "LocalSelfCoopPlusButton";
     private const string PrevButtonName = "LocalSelfCoopPrevButton";
     private const string NextButtonName = "LocalSelfCoopNextButton";
+    private static readonly Vector2 ButtonSize = new Vector2(140f, 32f);
+    private const float VerticalGapRatio = 0.5f;
 
     public static void Sync(NCharacterSelectScreen screen)
     {
@@ -114,8 +116,8 @@ internal static class LocalCharacterSelectCountButtons
             ButtonText = text,
             FocusMode = Control.FocusModeEnum.None,
             FontSize = 20,
-            Size = new Vector2(140f, 32f),
-            CustomMinimumSize = new Vector2(140f, 32f),
+            Size = ButtonSize,
+            CustomMinimumSize = ButtonSize,
             ImageScale = Vector2.One * 1.5f,
             MirrorImageX = mirrorImageX
         };
@@ -133,7 +135,21 @@ internal static class LocalCharacterSelectCountButtons
 
         // 注意：该坐标经过实机对齐，目的是避免与确认按钮重叠导致 + 按钮不可点击。
         // 请不要随意改回靠右布局，如需改动先实测“+ 按钮在 2->3/4 人时可稳定点击”。
-        panel.Position = embarkButton.Position + new Vector2(-296f, 94f);
+        Viewport? viewport = screen.GetViewport();
+        if (viewport == null)
+        {
+            return;
+        }
+
+        float horizontalGap = ButtonSize.X;
+        float verticalGap = ButtonSize.Y * VerticalGapRatio;
+        float secondColumnX = ButtonSize.X + horizontalGap;
+        float secondRowY = ButtonSize.Y + verticalGap;
+        float panelWidth = secondColumnX + ButtonSize.X;
+        float panelHeight = secondRowY + ButtonSize.Y;
+        Vector2 viewportSize = viewport.GetVisibleRect().Size;
+
+        panel.Position = new Vector2(viewportSize.X - panelWidth - 18f, viewportSize.Y - panelHeight - 18f);
 
         if (panel.GetNodeOrNull<LocalSimpleTextButton>(MinusButtonName) is { } minusButton)
         {
@@ -142,17 +158,17 @@ internal static class LocalCharacterSelectCountButtons
 
         if (panel.GetNodeOrNull<LocalSimpleTextButton>(PlusButtonName) is { } plusButton)
         {
-            plusButton.Position = new Vector2(148f, 0f);
+            plusButton.Position = new Vector2(secondColumnX, 0f);
         }
 
         if (panel.GetNodeOrNull<LocalSimpleTextButton>(PrevButtonName) is { } prevButton)
         {
-            prevButton.Position = new Vector2(0f, 40f);
+            prevButton.Position = new Vector2(0f, secondRowY);
         }
 
         if (panel.GetNodeOrNull<LocalSimpleTextButton>(NextButtonName) is { } nextButton)
         {
-            nextButton.Position = new Vector2(148f, 40f);
+            nextButton.Position = new Vector2(secondColumnX, secondRowY);
         }
     }
 
