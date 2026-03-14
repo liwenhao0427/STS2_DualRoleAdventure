@@ -31,6 +31,8 @@ Mods/LocalMultiControl/
 - `images/` - 教程配图
 - `README.md` - 教程索引
 
+> 该知识库目录未提交到仓库，请按需在工作环境外单独克隆 `../../知识库/Mod 开发指南/` 后再参照使用，发版说明或 AGENTS 中也可提醒其他协作者一起同步。
+
 ## 构建
 
 在 `src/Mods/LocalMultiControl` 目录执行：

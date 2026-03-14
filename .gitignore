@@ -6,9 +6,10 @@
 bin/
 obj/
 
-# Local export artifact
-LocalMultiControl.pck
+# Local export artifacts
 DualRoleAdventure.dll
+DualRoleAdventure.pck
+LocalMultiControl.pck
 
 # IDE/user files
 .vs/

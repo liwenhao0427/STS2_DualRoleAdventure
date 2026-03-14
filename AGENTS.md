@@ -178,3 +178,13 @@
   - `& "C:\Users\temp\项目\杀戮尖塔2Mod\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64.exe" --path . --export-pack "Windows Desktop" DualRoleAdventure.pck`
 - pck 生成成功后，再执行复制脚本：
   - `powershell -ExecutionPolicy Bypass -File .\copy_pck_to_game.ps1`
+
+## 17. 发版流程
+
+- 发布资产限于项目根的 `DualRoleAdventure.dll` 与 `DualRoleAdventure.pck`（已通过 `.gitignore` 排除，不能提交源代码），其他源码继续版本控制。
+- 发版流程推荐：
+  1. 使用 `dotnet build LocalMultiControl.csproj -c Release` 生成 Release 版本，并确认 `DualRoleAdventure.dll` 为最新构建产物；
+  2. 运行 Godot 导出：`& "C:\Users\temp\项目\杀戮尖塔2Mod\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64.exe" --path . --export-pack "Windows Desktop" DualRoleAdventure.pck` 生成 `DualRoleAdventure.pck`；
+  3. 在 GitHub Release 页面创建语义化标签（如 `v1.2.0`），上传上述两份文件为 Release Asset，并在说明中写清主要变更和所依赖的 baselib/知识库（参考目录 `../../知识库/Mod 开发指南/`，该目录未包含在仓库，需要额外克隆）；
+  4. 发版完成后，可在本节末尾记录最新版本号与发布日期（如“最新发布 v1.2.0 - 2026-03-14”），方便协作者或代理快速定位当前发布状态。
+
