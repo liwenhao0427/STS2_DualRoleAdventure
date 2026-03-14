@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
@@ -27,22 +29,27 @@ internal static class NMultiplayerHostSubmenuPatch
             }
 
             NSubmenuButton? standardButton = __instance.GetNodeOrNull<NSubmenuButton>("StandardButton");
+            NSubmenuButton? dailyButton = __instance.GetNodeOrNull<NSubmenuButton>("DailyButton");
+            NSubmenuButton? customButton = __instance.GetNodeOrNull<NSubmenuButton>("CustomRunButton");
             if (standardButton == null)
             {
                 LocalMultiControlLogger.Warn("未找到 StandardButton，无法注入本地双角色入口。");
                 return;
             }
 
-            NSubmenuButton button = CreateStyledButton(standardButton);
+            NSubmenuButton templateButton = customButton ?? standardButton;
+            NSubmenuButton button = CreateStyledButton(templateButton);
             button.Name = LocalSelfCoopButtonName;
             ApplyButtonText(button);
             button.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>((_) => OnLocalSelfCoopPressed(__instance)));
 
-            Control container = standardButton.GetParent<Control>();
+            Control container = templateButton.GetParent<Control>();
             container.AddChild(button);
-            int targetIndex = Math.Min(standardButton.GetIndex() + 1, container.GetChildCount() - 1);
+            int targetIndex = Math.Min(templateButton.GetIndex() + 1, container.GetChildCount() - 1);
             container.MoveChild(button, targetIndex);
-            LocalMultiControlLogger.Info("联机菜单已注入卡片样式入口：单人双角色。");
+
+            ArrangeFourButtonsHorizontally(standardButton, dailyButton, customButton, button);
+            LocalMultiControlLogger.Info("联机菜单已注入卡片样式入口：单人双角色（四卡并列）。");
         }
         catch (Exception exception)
         {
@@ -50,25 +57,58 @@ internal static class NMultiplayerHostSubmenuPatch
         }
     }
 
-    private static NSubmenuButton CreateStyledButton(NSubmenuButton standardButton)
+    private static NSubmenuButton CreateStyledButton(NSubmenuButton templateButton)
     {
         const Node.DuplicateFlags duplicateFlags = Node.DuplicateFlags.Groups |
                                                    Node.DuplicateFlags.Scripts |
                                                    Node.DuplicateFlags.UseInstantiation;
-        return standardButton.Duplicate((int)duplicateFlags) as NSubmenuButton
-            ?? throw new InvalidOperationException("复制 StandardButton 失败。");
+        return templateButton.Duplicate((int)duplicateFlags) as NSubmenuButton
+            ?? throw new InvalidOperationException("复制模板按钮失败。");
     }
 
     private static void ApplyButtonText(NSubmenuButton button)
     {
-        if (button.GetNodeOrNull("%Title") is Label title)
+        Node? titleNode = button.FindChild("Title", recursive: true, owned: false);
+        if (titleNode is Label title)
         {
             title.Text = "单人双角色";
         }
 
-        if (button.GetNodeOrNull("%Description") is RichTextLabel description)
+        Node? descriptionNode = button.FindChild("Description", recursive: true, owned: false);
+        if (descriptionNode is RichTextLabel description)
         {
             description.Text = "在本机创建两名可切换角色，进行本地双人协作。";
+        }
+    }
+
+    private static void ArrangeFourButtonsHorizontally(
+        NSubmenuButton standardButton,
+        NSubmenuButton? dailyButton,
+        NSubmenuButton? customButton,
+        NSubmenuButton localButton)
+    {
+        if (dailyButton == null || customButton == null)
+        {
+            return;
+        }
+
+        List<NSubmenuButton> originalButtons = new() { standardButton, dailyButton, customButton };
+        originalButtons = originalButtons.OrderBy((item) => item.Position.X).ToList();
+
+        float minX = originalButtons[0].Position.X;
+        float maxX = originalButtons[2].Position.X;
+        if (Math.Abs(maxX - minX) < 1f)
+        {
+            return;
+        }
+
+        float y = originalButtons[0].Position.Y;
+        float stepX = (maxX - minX) / 3f;
+        List<NSubmenuButton> arranged = new() { localButton, originalButtons[0], originalButtons[1], originalButtons[2] };
+        for (int index = 0; index < arranged.Count; index++)
+        {
+            NSubmenuButton button = arranged[index];
+            button.Position = new Vector2(minX + stepX * index, y);
         }
     }
 
