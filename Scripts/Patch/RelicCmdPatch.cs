@@ -25,7 +25,7 @@ internal static class RelicCmdObtainPatch
     [HarmonyPostfix]
     private static void Postfix(Player player, ref Task<RelicModel> __result)
     {
-        __result = MirrorObtainForOtherLocalPlayersAsync(player, __result);
+        __result = GoldMirrorSuppressionContext.RunSuppressedAsync(MirrorObtainForOtherLocalPlayersAsync(player, __result));
     }
 
     private static async Task<RelicModel> MirrorObtainForOtherLocalPlayersAsync(Player player, Task<RelicModel> originalTask)
