@@ -15,6 +15,8 @@ internal sealed partial class LocalSimpleTextButton : NButton
     private Tween? _hoverTween;
     private string _buttonText = string.Empty;
     private int _fontSize = 20;
+    private Vector2 _imageScale = Vector2.One;
+    private bool _mirrorImageX;
 
     public string ButtonText
     {
@@ -39,6 +41,26 @@ internal sealed partial class LocalSimpleTextButton : NButton
             {
                 _label.AddThemeFontSizeOverride("font_size", _fontSize);
             }
+        }
+    }
+
+    public Vector2 ImageScale
+    {
+        get => _imageScale;
+        set
+        {
+            _imageScale = value;
+            ApplyImageTransform();
+        }
+    }
+
+    public bool MirrorImageX
+    {
+        get => _mirrorImageX;
+        set
+        {
+            _mirrorImageX = value;
+            ApplyImageTransform();
         }
     }
 
@@ -112,6 +134,7 @@ internal sealed partial class LocalSimpleTextButton : NButton
         }
 
         _label.Text = _buttonText;
+        ApplyImageTransform();
     }
 
     private TextureRect CreateImageNode()
@@ -191,6 +214,18 @@ internal sealed partial class LocalSimpleTextButton : NButton
     {
         UpdateShaderValue(1f);
         Scale = Vector2.One;
+    }
+
+    private void ApplyImageTransform()
+    {
+        if (_image == null)
+        {
+            return;
+        }
+
+        float scaleX = _mirrorImageX ? -_imageScale.X : _imageScale.X;
+        _image.PivotOffset = ResolveDesiredSize() * 0.5f;
+        _image.Scale = new Vector2(scaleX, _imageScale.Y);
     }
 
     private void UpdateShaderValue(float value)

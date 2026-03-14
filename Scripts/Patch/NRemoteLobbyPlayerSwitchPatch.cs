@@ -49,7 +49,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             return;
         }
 
-        button.ButtonText = $"切{LocalSelfCoopContext.GetSlotLabel(playerNode.PlayerId)}";
+        button.ButtonText = string.Empty;
 
         // 右移固定轴，避免覆盖左侧玩家信息。
         float fixedX = playerNode.GlobalPosition.X + playerNode.Size.X + 72f;
@@ -66,11 +66,12 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         LocalSimpleTextButton button = new LocalSimpleTextButton
         {
             Name = ButtonName,
-            ButtonText = "切",
+            ButtonText = string.Empty,
             FontSize = 18,
             FocusMode = Control.FocusModeEnum.None,
             Size = new Vector2(68f, 32f),
             CustomMinimumSize = new Vector2(68f, 32f),
+            ImageScale = Vector2.One * 1.5f,
             TopLevel = true,
             ZIndex = 90
         };

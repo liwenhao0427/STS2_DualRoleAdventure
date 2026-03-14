@@ -77,7 +77,7 @@ internal static class LocalCombatSwitchButtons
     private const string NextButtonName = "LocalCombatSwitchNextButton";
     private const string TrackerName = "LocalCombatSwitchTracker";
     private static readonly Vector2 PingShowPosRatio = new Vector2(1536f, 932f) / NGame.devResolution;
-    private static readonly Vector2 ButtonOffset = new Vector2(144f, 8f);
+    private static readonly Vector2 EndTurnAnchorOffset = new Vector2(-28f, -42f);
 
     public static void Ensure(NCombatUi combatUi)
     {
@@ -97,11 +97,12 @@ internal static class LocalCombatSwitchButtons
         LocalSimpleTextButton prevButton = new LocalSimpleTextButton
         {
             Name = PrevButtonName,
-            ButtonText = "<",
+            ButtonText = string.Empty,
             FocusMode = Control.FocusModeEnum.None,
             FontSize = 20,
-            Size = new Vector2(56f, 32f),
-            CustomMinimumSize = new Vector2(56f, 32f)
+            Size = new Vector2(140f, 32f),
+            CustomMinimumSize = new Vector2(140f, 32f),
+            ImageScale = Vector2.One * 1.5f
         };
         prevButton.Connect(
             MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl.SignalName.Released,
@@ -112,12 +113,14 @@ internal static class LocalCombatSwitchButtons
         LocalSimpleTextButton nextButton = new LocalSimpleTextButton
         {
             Name = NextButtonName,
-            ButtonText = ">",
+            ButtonText = string.Empty,
             FocusMode = Control.FocusModeEnum.None,
             FontSize = 20,
-            Size = new Vector2(56f, 32f),
-            CustomMinimumSize = new Vector2(56f, 32f),
-            Position = new Vector2(60f, 0f)
+            Size = new Vector2(140f, 32f),
+            CustomMinimumSize = new Vector2(140f, 32f),
+            Position = new Vector2(148f, 0f),
+            ImageScale = Vector2.One * 1.5f,
+            MirrorImageX = true
         };
         nextButton.Connect(
             MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl.SignalName.Released,
@@ -175,14 +178,40 @@ internal static class LocalCombatSwitchButtons
             return;
         }
 
-        Vector2 anchor = PingShowPosRatio * viewport.GetVisibleRect().Size;
-        container.GlobalPosition = anchor + ButtonOffset;
+        NEndTurnButton? endTurnButton = FindEndTurnButton(combatUi);
+        if (endTurnButton != null)
+        {
+            container.GlobalPosition = endTurnButton.GlobalPosition + EndTurnAnchorOffset;
+            return;
+        }
+
+        Vector2 fallbackAnchor = PingShowPosRatio * viewport.GetVisibleRect().Size;
+        container.GlobalPosition = fallbackAnchor;
     }
 
     public static void Remove(NCombatUi combatUi)
     {
         Control? container = combatUi.GetNodeOrNull<Control>(ContainerName);
         container?.QueueFreeSafely();
+    }
+
+    private static NEndTurnButton? FindEndTurnButton(Node root)
+    {
+        if (root is NEndTurnButton endTurnButton)
+        {
+            return endTurnButton;
+        }
+
+        foreach (Node child in root.GetChildren())
+        {
+            NEndTurnButton? found = FindEndTurnButton(child);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 }
 

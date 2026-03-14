@@ -52,11 +52,11 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
             return;
         }
 
-        button.ButtonText = $"切{LocalSelfCoopContext.GetSlotLabel(state.Player.NetId)}";
+        button.ButtonText = string.Empty;
 
         // 注意：固定 X 轴对齐是用户明确要求，不能再按 Hitbox 宽度动态计算。
         // 之前 state.Hitbox.Size.X 会因名称/状态变化而偏移，造成三行按钮参差不齐。
-        float fixedX = state.GetViewport().GetVisibleRect().Size.X * (430f / NGame.devResolution.X);
+        float fixedX = state.GetViewport().GetVisibleRect().Size.X * (362f / NGame.devResolution.X);
         button.GlobalPosition = new Vector2(fixedX, state.GlobalPosition.Y + 8f);
     }
 
@@ -70,11 +70,12 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
         LocalSimpleTextButton button = new LocalSimpleTextButton
         {
             Name = SwitchButtonName,
-            ButtonText = "切",
+            ButtonText = string.Empty,
             FocusMode = Control.FocusModeEnum.None,
             FontSize = 18,
             Size = new Vector2(68f, 32f),
             CustomMinimumSize = new Vector2(68f, 32f),
+            ImageScale = Vector2.One * 1.5f,
             TopLevel = true,
             ZIndex = 100
         };
