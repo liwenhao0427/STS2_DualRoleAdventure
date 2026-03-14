@@ -20,6 +20,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Rewards;
+using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Runs.History;
 
@@ -38,19 +39,14 @@ internal static class CardRewardPatchPopulate
 
         try
         {
-            List<CardCreationResult>? cards = AccessTools.Field(typeof(CardReward), "_cards")?.GetValue(__instance) as List<CardCreationResult>;
-            if (cards == null || cards.Count == 0)
-            {
-                return;
-            }
-
             Player currentPlayer = __instance.Player;
             if (currentPlayer == null || currentPlayer.RunState == null)
             {
                 return;
             }
 
-            IEnumerable<Player> otherPlayers = currentPlayer.RunState.Players.Where(p => p.NetId != currentPlayer.NetId);
+            IRunState runState = currentPlayer.RunState;
+            IEnumerable<Player> otherPlayers = runState.Players.Where(p => p.NetId != currentPlayer.NetId);
             Player? otherPlayer = otherPlayers.FirstOrDefault();
             if (otherPlayer == null)
             {
@@ -73,23 +69,20 @@ internal static class CardRewardPatchPopulate
                 return;
             }
 
-            List<CardModel> otherPlayerCards = otherPlayer.Character.CardPool
-                .GetUnlockedCards(otherPlayer.UnlockState, otherPlayer.RunState.CardMultiplayerConstraint)
-                .ToList();
-
-            if (otherPlayerCards.Count == 0)
+            AbstractRoom? room = runState.CurrentRoom;
+            if (room is not CombatRoom combatRoom)
             {
                 return;
             }
 
-            IEnumerable<CardCreationResult> extraCards = CardFactory.CreateForReward(otherPlayer, 1, options.WithCustomPool(otherPlayerCards));
-            cards.AddRange(extraCards);
+            CardReward extraReward = new CardReward(options, 3, otherPlayer);
+            combatRoom.AddExtraReward(otherPlayer, extraReward);
 
-            LocalMultiControlLogger.Info($"卡牌奖励已添加另一角色卡牌: currentPlayer={currentPlayer.NetId}, otherPlayer={otherPlayer.NetId}, extraCards={extraCards.Count()}");
+            LocalMultiControlLogger.Info($"卡牌奖励已添加额外组: currentPlayer={currentPlayer.NetId}, otherPlayer={otherPlayer.NetId}");
         }
         catch (Exception ex)
         {
-            LocalMultiControlLogger.Warn($"添加额外卡牌奖励失败: {ex.Message}");
+            LocalMultiControlLogger.Warn($"添加额外卡牌奖励组失败: {ex.Message}");
         }
     }
 }

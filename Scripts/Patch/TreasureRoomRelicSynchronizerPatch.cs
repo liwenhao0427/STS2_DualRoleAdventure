@@ -14,7 +14,7 @@ internal static class TreasureRoomRelicSynchronizerPatch
     [HarmonyPostfix]
     private static void Postfix(TreasureRoomRelicSynchronizer __instance)
     {
-        if (!LocalSelfCoopContext.IsEnabled)
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
         {
             return;
         }
@@ -44,8 +44,8 @@ internal static class TreasureRoomRelicSynchronizerPatch
                 return;
             }
 
-            AccessTools.Method(typeof(TreasureRoomRelicSynchronizer), "AwardRelics")?.Invoke(__instance, new object[] { });
-            AccessTools.Method(typeof(TreasureRoomRelicSynchronizer), "EndRelicVoting")?.Invoke(__instance, new object[] { });
+            AccessTools.Method(typeof(TreasureRoomRelicSynchronizer), "AwardRelics")?.Invoke(__instance, null);
+            AccessTools.Method(typeof(TreasureRoomRelicSynchronizer), "EndRelicVoting")?.Invoke(__instance, null);
             LocalMultiControlLogger.Info("本地双人模式已自动补齐宝箱投票（随机），按简化随机宝箱流程结算。");
         }
         catch (Exception exception)

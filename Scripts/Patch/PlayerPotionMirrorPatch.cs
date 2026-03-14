@@ -7,6 +7,22 @@ using MegaCrit.Sts2.Core.Models;
 
 namespace LocalMultiControl.Scripts.Patch;
 
+[HarmonyPatch(typeof(Player), "PopulateStartingInventory")]
+internal static class PlayerPotionSlotsPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(Player __instance)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
+        {
+            return;
+        }
+
+        __instance.AddToMaxPotionCount(2);
+        LocalMultiControlLogger.Info($"玩家药水栏位已增加2格: player={__instance.NetId}, newCount={__instance.MaxPotionCount}");
+    }
+}
+
 [HarmonyPatch]
 internal static class PlayerPotionMirrorPatch
 {

@@ -22,7 +22,12 @@ internal static class RelicCmdObtainPatch
     private static async Task<RelicModel> MirrorObtainForOtherLocalPlayerAsync(Player player, Task<RelicModel> originalTask)
     {
         RelicModel obtainedRelic = await originalTask;
-        if (!LocalSelfCoopContext.IsEnabled || player.RunState.Players.Count != 2)
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
+        {
+            return obtainedRelic;
+        }
+
+        if (player.RunState == null || player.RunState.Players == null || player.RunState.Players.Count != 2)
         {
             return obtainedRelic;
         }
