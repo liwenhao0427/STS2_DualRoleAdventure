@@ -288,6 +288,8 @@ internal static class LocalSelfCoopContext
             return false;
         }
 
+        EnsureLobbyMaxCapacity(lobby);
+
         int targetCount = Math.Clamp(_desiredLocalPlayerCount, MinLocalPlayerCount, MaxLocalPlayerCount);
         EnsureLocalPlayerIdCapacity(targetCount);
 
@@ -358,6 +360,18 @@ internal static class LocalSelfCoopContext
         LocalMultiControlLogger.Info(
             $"大厅本地玩家数已同步: target={targetCount}, actual={GetActiveLobbyLocalPlayerIds().Count}, source={source}");
         return true;
+    }
+
+    private static void EnsureLobbyMaxCapacity(StartRunLobby lobby)
+    {
+        if (lobby.MaxPlayers >= MaxLocalPlayerCount)
+        {
+            return;
+        }
+
+        int oldMaxPlayers = lobby.MaxPlayers;
+        AccessTools.Field(typeof(StartRunLobby), "<MaxPlayers>k__BackingField")?.SetValue(lobby, MaxLocalPlayerCount);
+        LocalMultiControlLogger.Info($"已提升大厅最大容量: {oldMaxPlayers} -> {MaxLocalPlayerCount}");
     }
 
     private static void EnsureLobbyEditingPlayerIsValid()
