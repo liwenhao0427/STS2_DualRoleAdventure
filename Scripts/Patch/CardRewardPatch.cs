@@ -32,7 +32,7 @@ internal static class CardRewardPatchPopulate
     [HarmonyPostfix]
     private static void Postfix(CardReward __instance)
     {
-        // 已改由 RewardsCmdPatch 直接添加第二个 CardReward 条目，这里不再拼接 6 选 1。
+        // 已改由 RewardsCmdPatch 直接追加第二个 CardReward 条目，这里不再做额外拼接。
     }
 }
 
@@ -55,6 +55,12 @@ internal static class CardRewardPatch
     {
         LocalMultiControlLogger.Info($"卡牌奖励选择开始，归属固定到奖励拥有者: player={reward.Player.NetId}");
 
+        ulong? previousContextNetId = LocalContext.NetId;
+        LocalLoopbackHostGameService? loopback = RunManager.Instance.NetService as LocalLoopbackHostGameService;
+        ulong previousSenderId = loopback?.NetId ?? 0;
+        LocalContext.NetId = reward.Player.NetId;
+        loopback?.SetCurrentSenderId(reward.Player.NetId);
+
         bool removeReward = false;
         List<CardModel> chosenCards = new List<CardModel>();
         List<CardCreationResult>? cards = AccessTools.Field(typeof(CardReward), "_cards")?.GetValue(reward) as List<CardCreationResult>;
@@ -62,6 +68,7 @@ internal static class CardRewardPatch
         {
             throw new InvalidOperationException("无法读取卡牌奖励选项列表。");
         }
+
         IReadOnlyList<CardRewardAlternative> rewardOptions = CardRewardAlternative.Generate(reward);
         NCardRewardSelectionScreen? selectionScreen = NCardRewardSelectionScreen.ShowScreen(cards, rewardOptions);
         AccessTools.Field(typeof(CardReward), "_currentlyShownScreen")?.SetValue(reward, selectionScreen);
@@ -69,96 +76,108 @@ internal static class CardRewardPatch
             (Action<RelicModel>)AccessTools.Method(typeof(CardReward), "OnRelicObtained")!
                 .CreateDelegate(typeof(Action<RelicModel>), reward);
 
-        while (true)
+        try
         {
-            CardModel? selectedCardTemplate = null;
-            NCardHolder? selectedHolder = null;
-            if (selectionScreen != null)
+            while (true)
             {
-                Tuple<IEnumerable<NCardHolder>, bool> result = await selectionScreen.CardsSelected();
-                removeReward = result.Item2;
-                selectedHolder = result.Item1.FirstOrDefault();
-                selectedCardTemplate = selectedHolder?.CardNode?.Model;
-            }
-            else
-            {
-                selectedCardTemplate = CardSelectCmd.Selector?.GetSelectedCardReward(cards, rewardOptions);
-            }
-
-            if (selectedCardTemplate == null && !removeReward)
-            {
-                continue;
-            }
-
-            if (selectedCardTemplate != null)
-            {
-                Player receiver = reward.Player;
-                CardModel cardToAdd = selectedCardTemplate;
-                if (selectedCardTemplate.Owner != receiver)
+                CardModel? selectedCardTemplate = null;
+                NCardHolder? selectedHolder = null;
+                if (selectionScreen != null)
                 {
-                    cardToAdd = CardModel.FromSerializable(selectedCardTemplate.ToSerializable());
-                    receiver.RunState.AddCard(cardToAdd, receiver);
+                    Tuple<IEnumerable<NCardHolder>, bool> result = await selectionScreen.CardsSelected();
+                    removeReward = result.Item2;
+                    selectedHolder = result.Item1.FirstOrDefault();
+                    selectedCardTemplate = selectedHolder?.CardNode?.Model;
+                }
+                else
+                {
+                    selectedCardTemplate = CardSelectCmd.Selector?.GetSelectedCardReward(cards, rewardOptions);
                 }
 
-                CardPileAddResult addResult = await CardPileCmd.Add(cardToAdd, PileType.Deck);
-                if (addResult.success)
+                // 与原版流程一致：
+                // 选到卡，或点了“跳过/关闭”触发了结束，再进入本轮结算。
+                if (selectedCardTemplate != null || removeReward)
                 {
-                    CardModel addedCard = addResult.cardAdded;
-                    chosenCards.Add(addedCard);
-                    cards.RemoveAll((card) => card.Card == selectedCardTemplate);
-
-                    if (selectedHolder != null)
+                    if (selectedCardTemplate != null)
                     {
-                        NCard? cardNode = selectedHolder.CardNode;
-                        if (cardNode != null)
+                        Player receiver = reward.Player;
+                        CardModel cardToAdd = selectedCardTemplate;
+                        if (selectedCardTemplate.Owner != receiver)
                         {
-                            NRun? runNode = NRun.Instance;
-                            if (runNode != null)
+                            cardToAdd = CardModel.FromSerializable(selectedCardTemplate.ToSerializable());
+                            receiver.RunState.AddCard(cardToAdd, receiver);
+                        }
+
+                        CardPileAddResult addResult = await CardPileCmd.Add(cardToAdd, PileType.Deck);
+                        if (addResult.success)
+                        {
+                            CardModel addedCard = addResult.cardAdded;
+                            chosenCards.Add(addedCard);
+                            cards.RemoveAll((card) => card.Card == selectedCardTemplate);
+
+                            if (selectedHolder != null)
                             {
-                                runNode.GlobalUi.ReparentCard(cardNode);
-                                selectedHolder.QueueFreeSafely();
-                                Godot.Vector2 targetPosition = PileType.Deck.GetTargetPosition(cardNode);
-                                runNode.GlobalUi.TopBar.TrailContainer.AddChildSafely(
-                                    NCardFlyVfx.Create(cardNode, targetPosition, isAddingToPile: true, addedCard.Owner.Character.TrailPath));
+                                NCard? cardNode = selectedHolder.CardNode;
+                                if (cardNode != null)
+                                {
+                                    NRun? runNode = NRun.Instance;
+                                    if (runNode != null)
+                                    {
+                                        runNode.GlobalUi.ReparentCard(cardNode);
+                                        selectedHolder.QueueFreeSafely();
+                                        Godot.Vector2 targetPosition = PileType.Deck.GetTargetPosition(cardNode);
+                                        runNode.GlobalUi.TopBar.TrailContainer.AddChildSafely(
+                                            NCardFlyVfx.Create(cardNode, targetPosition, isAddingToPile: true, addedCard.Owner.Character.TrailPath));
+                                    }
+                                }
                             }
+
+                            Log.Info($"Obtained {addedCard.Id} from card reward for player {receiver.NetId}");
+                            RunManager.Instance.RewardSynchronizer.SyncLocalObtainedCard(addedCard);
                         }
                     }
 
-                    Log.Info($"Obtained {addedCard.Id} from card reward for player {receiver.NetId}");
-                    RunManager.Instance.RewardSynchronizer.SyncLocalObtainedCard(addedCard);
+                    reward.Player.RelicObtained -= onRelicObtainedHandler;
+                }
+
+                if (selectedCardTemplate == null || !MegaCrit.Sts2.Core.Hooks.Hook.ShouldAllowSelectingMoreCardRewards(reward.Player.RunState, reward.Player, reward))
+                {
+                    break;
                 }
             }
 
-            if (selectedCardTemplate == null || !MegaCrit.Sts2.Core.Hooks.Hook.ShouldAllowSelectingMoreCardRewards(reward.Player.RunState, reward.Player, reward))
+            Player finalReceiver = reward.Player;
+            foreach (CardModel card in chosenCards)
             {
-                break;
+                finalReceiver.RunState.CurrentMapPointHistoryEntry?.GetEntry(finalReceiver.NetId).CardChoices.Add(new CardChoiceHistoryEntry(card, wasPicked: true));
             }
-        }
 
-        reward.Player.RelicObtained -= onRelicObtainedHandler;
-
-        Player finalReceiver = reward.Player;
-        foreach (CardModel card in chosenCards)
-        {
-            finalReceiver.RunState.CurrentMapPointHistoryEntry?.GetEntry(finalReceiver.NetId).CardChoices.Add(new CardChoiceHistoryEntry(card, wasPicked: true));
-        }
-
-        if (removeReward)
-        {
-            foreach (CardCreationResult card in cards)
+            if (removeReward)
             {
-                finalReceiver.RunState.CurrentMapPointHistoryEntry?.GetEntry(finalReceiver.NetId).CardChoices.Add(new CardChoiceHistoryEntry(card.Card, wasPicked: false));
-                RunManager.Instance.RewardSynchronizer.SyncLocalSkippedCard(card.Card);
+                foreach (CardCreationResult card in cards)
+                {
+                    finalReceiver.RunState.CurrentMapPointHistoryEntry?.GetEntry(finalReceiver.NetId).CardChoices.Add(new CardChoiceHistoryEntry(card.Card, wasPicked: false));
+                    RunManager.Instance.RewardSynchronizer.SyncLocalSkippedCard(card.Card);
+                }
             }
-        }
 
-        if (selectionScreen != null)
+            if (selectionScreen != null)
+            {
+                NOverlayStack.Instance?.Remove(selectionScreen);
+                AccessTools.Field(typeof(CardReward), "_currentlyShownScreen")?.SetValue(reward, null);
+            }
+
+            return removeReward;
+        }
+        finally
         {
-            NOverlayStack.Instance?.Remove(selectionScreen);
-            AccessTools.Field(typeof(CardReward), "_currentlyShownScreen")?.SetValue(reward, null);
-        }
+            reward.Player.RelicObtained -= onRelicObtainedHandler;
+            if (loopback != null && loopback.NetId != previousSenderId)
+            {
+                loopback.SetCurrentSenderId(previousSenderId);
+            }
 
-        return removeReward;
+            LocalContext.NetId = previousContextNetId;
+        }
     }
 }
-
