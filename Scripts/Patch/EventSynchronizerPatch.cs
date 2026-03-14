@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Context;
@@ -13,6 +14,8 @@ namespace LocalMultiControl.Scripts.Patch;
 [HarmonyPatch(typeof(EventSynchronizer), nameof(EventSynchronizer.ChooseLocalOption))]
 internal static class EventSynchronizerPatch
 {
+    private static bool _isChoosingSharedEventOption;
+
     private struct SenderState
     {
         internal bool IsPatched;
@@ -118,26 +121,53 @@ internal static class EventSynchronizerPatch
             }
 
             int otherSlot = (localSlot + 1) % 2;
-            if (!votes[localSlot].HasValue)
+            uint selectedOption = (uint)index;
+            bool hadCrossPageVoteResidual = votes.All((vote) => vote.HasValue) &&
+                votes.Any((vote) => vote.HasValue && vote.Value != selectedOption);
+            if (hadCrossPageVoteResidual)
             {
-                votes[localSlot] = (uint)index;
+                LocalMultiControlLogger.Warn($"检测到共享事件残留投票，已覆盖为当前选项: option={index}");
             }
 
-            if (!votes[otherSlot].HasValue)
-            {
-                votes[otherSlot] = (uint)index;
-                LocalMultiControlLogger.Info($"共享事件自动代投: slot{otherSlot} -> option={index}");
-            }
+            votes[localSlot] = selectedOption;
+            votes[otherSlot] = selectedOption;
+            LocalMultiControlLogger.Info($"共享事件自动代投: slot{otherSlot} -> option={index}");
 
             if (votes.All((vote) => vote.HasValue) && netService.Type != NetGameType.Client)
             {
-                AccessTools.Method(typeof(EventSynchronizer), "ChooseSharedEventOption")?.Invoke(synchronizer, Array.Empty<object>());
-                LocalMultiControlLogger.Info("共享事件自动代投已补齐，已触发结算。");
+                TryChooseSharedEventOptionDeferred(synchronizer);
             }
         }
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"共享事件自动代投失败: {exception.Message}");
         }
+    }
+
+    private static void TryChooseSharedEventOptionDeferred(EventSynchronizer synchronizer)
+    {
+        if (_isChoosingSharedEventOption)
+        {
+            LocalMultiControlLogger.Warn("共享事件结算已在进行中，跳过重复触发。");
+            return;
+        }
+
+        _isChoosingSharedEventOption = true;
+        Callable.From(delegate
+        {
+            try
+            {
+                AccessTools.Method(typeof(EventSynchronizer), "ChooseSharedEventOption")?.Invoke(synchronizer, Array.Empty<object>());
+                LocalMultiControlLogger.Info("共享事件自动代投已补齐，已触发结算。");
+            }
+            catch (Exception exception)
+            {
+                LocalMultiControlLogger.Warn($"共享事件结算触发失败: {exception.Message}");
+            }
+            finally
+            {
+                _isChoosingSharedEventOption = false;
+            }
+        }).CallDeferred();
     }
 }
