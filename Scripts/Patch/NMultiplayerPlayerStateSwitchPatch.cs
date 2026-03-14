@@ -19,25 +19,17 @@ internal static class NMultiplayerPlayerStateReadyPatch
     }
 }
 
-[HarmonyPatch(typeof(NMultiplayerPlayerState), nameof(NMultiplayerPlayerState._Process))]
-internal static class NMultiplayerPlayerStateProcessPatch
-{
-    [HarmonyPostfix]
-    private static void Postfix(NMultiplayerPlayerState __instance)
-    {
-        LocalMultiplayerPlayerStateSwitchUi.Refresh(__instance);
-    }
-}
-
 internal static class LocalMultiplayerPlayerStateSwitchUi
 {
     private const string SwitchButtonName = "LocalSwitchPlayerButton";
     private const string RightClickMetaKey = "LocalSwitchPlayerRightClickBound";
+    private const string TrackerName = "LocalSwitchPlayerTracker";
 
     public static void Ensure(NMultiplayerPlayerState state)
     {
         BindRightClick(state);
         EnsureSwitchButton(state);
+        EnsureTracker(state);
         Refresh(state);
     }
 
@@ -82,6 +74,21 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
         state.AddChildSafely(button);
     }
 
+    private static void EnsureTracker(NMultiplayerPlayerState state)
+    {
+        if (state.GetNodeOrNull<LocalPlayerStateSwitchTracker>(TrackerName) != null)
+        {
+            return;
+        }
+
+        LocalPlayerStateSwitchTracker tracker = new LocalPlayerStateSwitchTracker
+        {
+            Name = TrackerName
+        };
+        tracker.Initialize(state);
+        state.AddChild(tracker);
+    }
+
     private static void BindRightClick(NMultiplayerPlayerState state)
     {
         if (state.Hitbox.HasMeta(RightClickMetaKey))
@@ -115,5 +122,27 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
         }
 
         LocalControlSwitchGuard.TrySwitchTo(player.NetId, source);
+    }
+}
+
+internal sealed partial class LocalPlayerStateSwitchTracker : Node
+{
+    private NMultiplayerPlayerState? _state;
+
+    public void Initialize(NMultiplayerPlayerState state)
+    {
+        _state = state;
+        SetProcess(true);
+    }
+
+    public override void _Process(double delta)
+    {
+        if (_state == null || !GodotObject.IsInstanceValid(_state))
+        {
+            QueueFree();
+            return;
+        }
+
+        LocalMultiplayerPlayerStateSwitchUi.Refresh(_state);
     }
 }

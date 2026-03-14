@@ -45,7 +45,6 @@ internal static class LocalCharacterSelectCountButtons
     private const string PanelName = "LocalSelfCoopCountPanel";
     private const string MinusButtonName = "LocalSelfCoopMinusButton";
     private const string PlusButtonName = "LocalSelfCoopPlusButton";
-    private const string LabelName = "LocalSelfCoopCountLabel";
 
     public static void Sync(NCharacterSelectScreen screen)
     {
@@ -57,7 +56,6 @@ internal static class LocalCharacterSelectCountButtons
 
         Control panel = EnsurePanel(screen);
         UpdateLayout(screen, panel);
-        UpdateLabel(panel);
     }
 
     public static void Remove(NCharacterSelectScreen screen)
@@ -91,19 +89,6 @@ internal static class LocalCharacterSelectCountButtons
             Callable.From<NClickableControl>((_) => OnAdjustPlayerCount(1)));
         panel.AddChild(plusButton);
 
-        Label label = new Label
-        {
-            Name = LabelName,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        label.AddThemeColorOverride("font_color", new Color("fdf6e3"));
-        label.AddThemeColorOverride("font_outline_color", new Color("1f1f1f"));
-        label.AddThemeConstantOverride("outline_size", 8);
-        label.AddThemeFontSizeOverride("font_size", 22);
-        panel.AddChild(label);
-
         screen.AddChildSafely(panel);
         LocalMultiControlLogger.Info("角色选择页已创建本地人数 +/- 实体按钮。");
         return panel;
@@ -116,8 +101,8 @@ internal static class LocalCharacterSelectCountButtons
             Name = name,
             ButtonText = text,
             FocusMode = Control.FocusModeEnum.None,
-            Size = new Vector2(82f, 42f),
-            CustomMinimumSize = new Vector2(82f, 42f)
+            Size = new Vector2(68f, 38f),
+            CustomMinimumSize = new Vector2(68f, 38f)
         };
         return button;
     }
@@ -131,7 +116,7 @@ internal static class LocalCharacterSelectCountButtons
             return;
         }
 
-        panel.Position = embarkButton.Position + new Vector2(-360f, 10f);
+        panel.Position = embarkButton.Position + new Vector2(-156f, 18f);
 
         if (panel.GetNodeOrNull<LocalSimpleTextButton>(MinusButtonName) is { } minusButton)
         {
@@ -140,26 +125,8 @@ internal static class LocalCharacterSelectCountButtons
 
         if (panel.GetNodeOrNull<LocalSimpleTextButton>(PlusButtonName) is { } plusButton)
         {
-            plusButton.Position = new Vector2(92f, 0f);
+            plusButton.Position = new Vector2(76f, 0f);
         }
-
-        if (panel.GetNodeOrNull<Label>(LabelName) is { } label)
-        {
-            label.Position = new Vector2(196f, 4f);
-            label.Size = new Vector2(280f, 36f);
-        }
-    }
-
-    private static void UpdateLabel(Control panel)
-    {
-        Label? label = panel.GetNodeOrNull<Label>(LabelName);
-        if (label == null)
-        {
-            return;
-        }
-
-        int count = LocalSelfCoopContext.DesiredLocalPlayerCount;
-        label.Text = $"本地人数: {count}  点击 +/- 调整";
     }
 
     private static void OnAdjustPlayerCount(int delta)
