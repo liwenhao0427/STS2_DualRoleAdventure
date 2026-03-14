@@ -5,7 +5,7 @@ $targetDir = "E:\SteamLibrary\steamapps\common\Slay the Spire 2\mods\$modName"
 
 $pckCandidates = @(
     (Join-Path $PSScriptRoot "$modName.pck"),
-    (Join-Path $PSScriptRoot "LocalMultiControl.pck")
+    (Join-Path $PSScriptRoot "$modName.pck")
 )
 
 $sourcePckPath = $pckCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
