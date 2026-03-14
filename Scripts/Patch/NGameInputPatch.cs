@@ -1,7 +1,9 @@
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Patch;
@@ -31,6 +33,28 @@ internal static class NGameInputPatch
                       physicalKeycode == Key.R ||
                       keycode == Key.Slash ||
                       physicalKeycode == Key.Slash;
+
+        bool isDecreasePlayerCount = keycode == Key.Minus || physicalKeycode == Key.Minus;
+        bool isIncreasePlayerCount = keycode == Key.Equal ||
+                                     physicalKeycode == Key.Equal ||
+                                     keycode == Key.Plus ||
+                                     physicalKeycode == Key.Plus;
+
+        if (!RunManager.Instance.IsInProgress &&
+            LocalSelfCoopContext.IsEnabled &&
+            (isDecreasePlayerCount || isIncreasePlayerCount))
+        {
+            int delta = isIncreasePlayerCount ? 1 : -1;
+            string hotkeyLabel = isIncreasePlayerCount ? "+ / =" : "-";
+            if (LocalSelfCoopContext.AdjustDesiredLocalPlayerCount(delta, $"hotkey:{hotkeyLabel}"))
+            {
+                int targetCount = LocalSelfCoopContext.DesiredLocalPlayerCount;
+                LocalMultiControlLogger.Info($"检测到人数热键 {hotkeyLabel}，本地人数已调整为 {targetCount}");
+                NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"本地人数: {targetCount}"));
+            }
+
+            return;
+        }
 
         if (!isPrevious && !isNext)
         {
