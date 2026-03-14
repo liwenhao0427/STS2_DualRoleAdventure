@@ -22,10 +22,27 @@ internal static class RelicCmdObtainPatch
         return NonSharedTreasureRelics.Remove(relic);
     }
 
+    [HarmonyPrefix]
+    private static void Prefix()
+    {
+        GoldMirrorSuppressionContext.EnterSuppression();
+    }
+
     [HarmonyPostfix]
     private static void Postfix(Player player, ref Task<RelicModel> __result)
     {
-        __result = GoldMirrorSuppressionContext.RunSuppressedAsync(MirrorObtainForOtherLocalPlayersAsync(player, __result));
+        __result = GoldMirrorSuppressionContext.ExitSuppressionWhenCompleteAsync(MirrorObtainForOtherLocalPlayersAsync(player, __result));
+    }
+
+    [HarmonyFinalizer]
+    private static Exception? Finalizer(Exception? __exception)
+    {
+        if (__exception != null)
+        {
+            GoldMirrorSuppressionContext.ExitSuppressionOnce();
+        }
+
+        return __exception;
     }
 
     private static async Task<RelicModel> MirrorObtainForOtherLocalPlayersAsync(Player player, Task<RelicModel> originalTask)

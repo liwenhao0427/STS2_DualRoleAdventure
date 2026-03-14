@@ -14,19 +14,28 @@ internal static class GoldMirrorSuppressionContext
 
     internal static bool ShouldSuppressGoldMirror => SuppressDepth.Value > 0;
 
-    internal static async Task<T> RunSuppressedAsync<T>(Task<T> task)
+    internal static void EnterSuppression()
     {
         SuppressDepth.Value++;
+    }
+
+    internal static async Task<T> ExitSuppressionWhenCompleteAsync<T>(Task<T> task)
+    {
         try
         {
             return await task;
         }
         finally
         {
-            if (SuppressDepth.Value > 0)
-            {
-                SuppressDepth.Value--;
-            }
+            ExitSuppressionOnce();
+        }
+    }
+
+    internal static void ExitSuppressionOnce()
+    {
+        if (SuppressDepth.Value > 0)
+        {
+            SuppressDepth.Value--;
         }
     }
 }
@@ -51,6 +60,7 @@ internal static class PlayerGainGoldMirrorPatch
 
         if (GoldMirrorSuppressionContext.ShouldSuppressGoldMirror)
         {
+            LocalMultiControlLogger.Info($"遗物流程金币跳过镜像: amount={amount}, owner={player.NetId}");
             return;
         }
 
