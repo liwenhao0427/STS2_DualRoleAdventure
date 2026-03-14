@@ -31,12 +31,17 @@ internal static class NGameInputPatch
                 LocalSelfCoopContext.SwitchLobbyEditingPlayer(next: false);
             }
         }
-        else if (keycode == Key.Bracketright || physicalKeycode == Key.Bracketright || keycode == Key.Slash || physicalKeycode == Key.Slash)
+        else if (keycode == Key.Bracketright ||
+                 physicalKeycode == Key.Bracketright ||
+                 keycode == Key.Slash ||
+                 physicalKeycode == Key.Slash ||
+                 keycode == Key.R ||
+                 physicalKeycode == Key.R)
         {
-            LocalMultiControlLogger.Info("检测到切换热键: ]/");
+            LocalMultiControlLogger.Info("检测到切换热键: ]/R");
             if (RunManager.Instance.IsInProgress)
             {
-                LocalMultiControlRuntime.SwitchNextControlledPlayer("hotkey:]/");
+                LocalMultiControlRuntime.SwitchNextControlledPlayer("hotkey:]/R");
             }
             else
             {
