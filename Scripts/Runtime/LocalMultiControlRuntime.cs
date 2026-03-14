@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
+using LocalMultiControl.Scripts.Patch;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -507,6 +508,52 @@ internal static class LocalMultiControlRuntime
         {
             LocalMultiControlLogger.Warn($"刷新顶部栏失败: {exception.Message}");
         }
+    }
+
+    public static void RefreshSharedTopBarForCombat(string source)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode || !RunManager.Instance.IsInProgress)
+        {
+            return;
+        }
+
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
+        NRun? runNode = NRun.Instance;
+        if (runState == null || runNode?.GlobalUi == null)
+        {
+            return;
+        }
+
+        bool potionRefreshed = false;
+        bool relicRefreshed = false;
+
+        try
+        {
+            potionRefreshed = NPotionContainerPatch.TryBindPotionContainerToPrimaryPlayer(runNode.GlobalUi.TopBar.PotionContainer, runState);
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"战斗前药水栏刷新失败: {exception.Message}");
+        }
+
+        try
+        {
+            relicRefreshed = NRelicInventoryPatch.TryRebuildRelicInventoryToPrimaryPlayer(runNode.GlobalUi.RelicInventory, runState);
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"战斗前遗物栏刷新失败: {exception.Message}");
+        }
+
+        if (!potionRefreshed && !relicRefreshed)
+        {
+            LocalMultiControlLogger.Warn($"战斗前顶部栏刷新未生效: source={source}");
+            return;
+        }
+
+        AccessTools.Method(typeof(NTopBar), "UpdateNavigation")?.Invoke(runNode.GlobalUi.TopBar, Array.Empty<object>());
+        AccessTools.Method(typeof(MegaCrit.Sts2.Core.Nodes.Relics.NRelicInventory), "UpdateNavigation")?.Invoke(runNode.GlobalUi.RelicInventory, Array.Empty<object>());
+        LocalMultiControlLogger.Info($"战斗前顶部栏刷新完成: source={source}, potion={potionRefreshed}, relic={relicRefreshed}");
     }
 
     private static void RefreshTopBarDeck(NTopBarDeckButton deckButton, Player player)

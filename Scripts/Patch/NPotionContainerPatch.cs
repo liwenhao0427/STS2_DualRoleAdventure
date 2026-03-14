@@ -56,7 +56,7 @@ internal static class NPotionContainerPatch
         return false;
     }
 
-    private static bool TryBindPotionContainerToPrimaryPlayer(NPotionContainer potionContainer, IRunState runState)
+    internal static bool TryBindPotionContainerToPrimaryPlayer(NPotionContainer potionContainer, IRunState runState)
     {
         MegaCrit.Sts2.Core.Entities.Players.Player? primaryPlayer = runState.GetPlayer(LocalSelfCoopContext.PrimaryPlayerId);
         if (primaryPlayer == null)

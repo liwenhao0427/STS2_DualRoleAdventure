@@ -6,6 +6,7 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Relics;
+using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Patch;
 
@@ -35,5 +36,45 @@ internal static class NRelicInventoryPatch
 
         TaskHelper.RunSafely(holder.PlayNewlyAcquiredAnimation(startPosition, startScale));
         return false;
+    }
+
+    internal static bool TryRebuildRelicInventoryToPrimaryPlayer(NRelicInventory relicInventory, IRunState runState)
+    {
+        MegaCrit.Sts2.Core.Entities.Players.Player? primaryPlayer = runState.GetPlayer(LocalSelfCoopContext.PrimaryPlayerId);
+        if (primaryPlayer == null)
+        {
+            return false;
+        }
+
+        AccessTools.Method(typeof(NRelicInventory), "DisconnectPlayerEvents")?.Invoke(relicInventory, null);
+        AccessTools.Field(typeof(NRelicInventory), "_player")?.SetValue(relicInventory, primaryPlayer);
+        AccessTools.Method(typeof(NRelicInventory), "ConnectPlayerEvents")?.Invoke(relicInventory, null);
+
+        List<NRelicInventoryHolder>? relicNodes = AccessTools.Field(typeof(NRelicInventory), "_relicNodes")?.GetValue(relicInventory) as List<NRelicInventoryHolder>;
+        if (relicNodes == null)
+        {
+            return false;
+        }
+
+        foreach (NRelicInventoryHolder holder in relicNodes.ToList())
+        {
+            holder.GetParent()?.RemoveChild(holder);
+            holder.QueueFreeSafely();
+        }
+
+        relicNodes.Clear();
+        System.Reflection.MethodInfo? addMethod = AccessTools.Method(typeof(NRelicInventory), "Add");
+        if (addMethod == null)
+        {
+            return false;
+        }
+
+        foreach (RelicModel relic in primaryPlayer.Relics)
+        {
+            addMethod.Invoke(relicInventory, new object[] { relic, true, -1 });
+        }
+
+        LocalMultiControlLogger.Info($"遗物栏已重建到1号位玩家: player={primaryPlayer.NetId}, count={primaryPlayer.Relics.Count}");
+        return true;
     }
 }

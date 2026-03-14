@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
+using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -11,10 +13,17 @@ namespace LocalMultiControl.Scripts.Patch;
 [HarmonyPatch(typeof(EventSynchronizer), nameof(EventSynchronizer.ChooseLocalOption))]
 internal static class EventSynchronizerPatch
 {
-    [HarmonyPrefix]
-    private static void Prefix(EventSynchronizer __instance, ref ulong __state)
+    private struct SenderState
     {
-        __state = 0;
+        internal bool IsPatched;
+        internal ulong? PreviousContextNetId;
+        internal ulong PreviousSenderId;
+    }
+
+    [HarmonyPrefix]
+    private static void Prefix(EventSynchronizer __instance, ref SenderState __state)
+    {
+        __state = default;
         if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleEventFlow)
         {
             return;
@@ -26,52 +35,52 @@ internal static class EventSynchronizerPatch
             return;
         }
 
-        __state = loopbackService.NetId;
-        if (__state != LocalSelfCoopContext.PrimaryPlayerId)
-        {
-            loopbackService.SetCurrentSenderId(LocalSelfCoopContext.PrimaryPlayerId);
-        }
+        __state.IsPatched = true;
+        __state.PreviousContextNetId = LocalContext.NetId;
+        __state.PreviousSenderId = loopbackService.NetId;
+
+        LocalContext.NetId = LocalSelfCoopContext.PrimaryPlayerId;
+        loopbackService.SetCurrentSenderId(LocalSelfCoopContext.PrimaryPlayerId);
     }
 
     [HarmonyPostfix]
-    private static void Postfix(EventSynchronizer __instance, int index)
+    private static void Postfix(EventSynchronizer __instance, int index, SenderState __state)
     {
-        if (LocalSelfCoopContext.IsEnabled && LocalSelfCoopContext.UseSingleEventFlow)
+        try
         {
-            return;
+            TryAutoProxyEventChoice(__instance, index);
         }
-
-        PostfixLegacy(__instance, index);
-    }
-
-    [HarmonyPostfix]
-    private static void PostfixRestoreSender(EventSynchronizer __instance, ulong __state)
-    {
-        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleEventFlow || __state == 0)
+        finally
         {
-            return;
-        }
+            if (__state.IsPatched)
+            {
+                INetGameService? netService = AccessTools.Field(typeof(EventSynchronizer), "_netService")?.GetValue(__instance) as INetGameService;
+                if (netService is LocalLoopbackHostGameService loopbackService && loopbackService.NetId != __state.PreviousSenderId)
+                {
+                    loopbackService.SetCurrentSenderId(__state.PreviousSenderId);
+                }
 
-        INetGameService? netService = AccessTools.Field(typeof(EventSynchronizer), "_netService")?.GetValue(__instance) as INetGameService;
-        if (netService is LocalLoopbackHostGameService loopbackService && loopbackService.NetId != __state)
-        {
-            loopbackService.SetCurrentSenderId(__state);
+                LocalContext.NetId = __state.PreviousContextNetId;
+            }
         }
     }
 
-    private static void PostfixLegacy(EventSynchronizer __instance, int index)
+    private static void TryAutoProxyEventChoice(EventSynchronizer synchronizer, int index)
     {
         if (!LocalSelfCoopContext.IsEnabled)
         {
             return;
         }
 
-        if (!__instance.IsShared)
+        if (!synchronizer.IsShared)
         {
-            ulong currentPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId ?? 0;
-            if (currentPlayerId != 0)
+            if (!LocalSelfCoopContext.UseSingleEventFlow)
             {
-                LocalSelfCoopContext.RequestEventAutoSwitchAfterChoice(currentPlayerId);
+                ulong currentPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId ?? 0;
+                if (currentPlayerId != 0)
+                {
+                    LocalSelfCoopContext.RequestEventAutoSwitchAfterChoice(currentPlayerId);
+                }
             }
 
             return;
@@ -79,42 +88,56 @@ internal static class EventSynchronizerPatch
 
         try
         {
-            INetGameService? netService = AccessTools.Field(typeof(EventSynchronizer), "_netService")?.GetValue(__instance) as INetGameService;
+            INetGameService? netService = AccessTools.Field(typeof(EventSynchronizer), "_netService")?.GetValue(synchronizer) as INetGameService;
             if (netService is not LocalLoopbackHostGameService)
             {
                 return;
             }
 
-            IPlayerCollection? playerCollection = AccessTools.Field(typeof(EventSynchronizer), "_playerCollection")?.GetValue(__instance) as IPlayerCollection;
-            List<uint?>? votes = AccessTools.Field(typeof(EventSynchronizer), "_playerVotes")?.GetValue(__instance) as List<uint?>;
+            IPlayerCollection? playerCollection = AccessTools.Field(typeof(EventSynchronizer), "_playerCollection")?.GetValue(synchronizer) as IPlayerCollection;
+            List<uint?>? votes = AccessTools.Field(typeof(EventSynchronizer), "_playerVotes")?.GetValue(synchronizer) as List<uint?>;
             if (playerCollection == null || votes == null || playerCollection.Players.Count != 2 || votes.Count < 2)
             {
                 return;
             }
 
-            ulong controlledPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId ?? 0;
-            int localSlot = playerCollection.Players.ToList().FindIndex((player) => player.NetId == controlledPlayerId);
+            List<Player> players = playerCollection.Players.ToList();
+            ulong localPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId
+                ?? LocalContext.NetId
+                ?? LocalSelfCoopContext.PrimaryPlayerId;
+
+            int localSlot = players.FindIndex((player) => player.NetId == localPlayerId);
+            if (localSlot < 0)
+            {
+                localSlot = players.FindIndex((player) => player.NetId == LocalSelfCoopContext.PrimaryPlayerId);
+            }
+
             if (localSlot < 0)
             {
                 return;
             }
 
             int otherSlot = (localSlot + 1) % 2;
-            if (votes[otherSlot].HasValue)
+            if (!votes[localSlot].HasValue)
             {
-                return;
+                votes[localSlot] = (uint)index;
             }
 
-            votes[otherSlot] = (uint)index;
-            LocalMultiControlLogger.Info($"事件自动代投: slot{otherSlot} -> option={index}");
+            if (!votes[otherSlot].HasValue)
+            {
+                votes[otherSlot] = (uint)index;
+                LocalMultiControlLogger.Info($"共享事件自动代投: slot{otherSlot} -> option={index}");
+            }
+
             if (votes.All((vote) => vote.HasValue) && netService.Type != NetGameType.Client)
             {
-                AccessTools.Method(typeof(EventSynchronizer), "ChooseSharedEventOption")?.Invoke(__instance, Array.Empty<object>());
+                AccessTools.Method(typeof(EventSynchronizer), "ChooseSharedEventOption")?.Invoke(synchronizer, Array.Empty<object>());
+                LocalMultiControlLogger.Info("共享事件自动代投已补齐，已触发结算。");
             }
         }
         catch (Exception exception)
         {
-            LocalMultiControlLogger.Warn($"事件自动代投失败: {exception.Message}");
+            LocalMultiControlLogger.Warn($"共享事件自动代投失败: {exception.Message}");
         }
     }
 }

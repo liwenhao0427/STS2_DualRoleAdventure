@@ -1,3 +1,4 @@
+using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Combat;
@@ -17,5 +18,10 @@ internal static class NCombatRoomPatch
         }
 
         LocalMultiControlRuntime.SwitchControlledPlayerTo(LocalSelfCoopContext.PrimaryPlayerId, "combat-setup");
+        LocalMultiControlRuntime.RefreshSharedTopBarForCombat("combat-setup");
+        Callable.From(delegate
+        {
+            LocalMultiControlRuntime.RefreshSharedTopBarForCombat("combat-setup-deferred");
+        }).CallDeferred();
     }
 }
