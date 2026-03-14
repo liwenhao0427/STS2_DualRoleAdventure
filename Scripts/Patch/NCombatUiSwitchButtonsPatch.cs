@@ -77,7 +77,7 @@ internal static class LocalCombatSwitchButtons
     private const string DownButtonName = "LocalCombatSwitchDownButton";
     private const string TrackerName = "LocalCombatSwitchTracker";
     private static readonly Vector2 PingShowPosRatio = new Vector2(1536f, 932f) / NGame.devResolution;
-    private static readonly Vector2 ButtonOffset = new Vector2(162f, -2f);
+    private static readonly Vector2 ButtonOffset = new Vector2(148f, 4f);
 
     public static void Ensure(NCombatUi combatUi)
     {
@@ -99,8 +99,9 @@ internal static class LocalCombatSwitchButtons
             Name = UpButtonName,
             ButtonText = "上",
             FocusMode = Control.FocusModeEnum.None,
-            Size = new Vector2(48f, 28f),
-            CustomMinimumSize = new Vector2(48f, 28f)
+            FontSize = 15,
+            Size = new Vector2(34f, 24f),
+            CustomMinimumSize = new Vector2(34f, 24f)
         };
         upButton.Connect(
             MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl.SignalName.Released,
@@ -113,9 +114,10 @@ internal static class LocalCombatSwitchButtons
             Name = DownButtonName,
             ButtonText = "下",
             FocusMode = Control.FocusModeEnum.None,
-            Size = new Vector2(48f, 28f),
-            CustomMinimumSize = new Vector2(48f, 28f),
-            Position = new Vector2(0f, 32f)
+            FontSize = 15,
+            Size = new Vector2(34f, 24f),
+            CustomMinimumSize = new Vector2(34f, 24f),
+            Position = new Vector2(0f, 26f)
         };
         downButton.Connect(
             MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl.SignalName.Released,
@@ -154,7 +156,8 @@ internal static class LocalCombatSwitchButtons
             return;
         }
 
-        bool hasMultiplePlayers = LocalMultiControlRuntime.SessionState.OrderedPlayerIds.Count > 1;
+        int runPlayerCount = RunManager.Instance.DebugOnlyGetState()?.Players.Count ?? 0;
+        bool hasMultiplePlayers = LocalMultiControlRuntime.SessionState.OrderedPlayerIds.Count > 1 || runPlayerCount > 1;
         bool shouldShow = LocalSelfCoopContext.IsEnabled
                           && RunManager.Instance.IsInProgress
                           && CombatManager.Instance.IsInProgress

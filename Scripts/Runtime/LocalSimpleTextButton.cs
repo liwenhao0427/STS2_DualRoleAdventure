@@ -5,15 +5,16 @@ namespace LocalMultiControl.Scripts.Runtime;
 
 internal sealed partial class LocalSimpleTextButton : NButton
 {
-    private const string ButtonTexturePath = "res://images/packed/common_ui/event_button.png";
+    private const string ButtonTexturePath = "res://images/packed/common_ui/settings_tiny_left_arrow.png";
     private const string HsvShaderPath = "res://shaders/hsv.gdshader";
-    private static readonly Vector2 DefaultButtonSize = new Vector2(92f, 38f);
+    private static readonly Vector2 DefaultButtonSize = new Vector2(36f, 24f);
 
     private TextureRect? _image;
     private Label? _label;
     private ShaderMaterial? _hsv;
     private Tween? _hoverTween;
     private string _buttonText = string.Empty;
+    private int _fontSize = 16;
 
     public string ButtonText
     {
@@ -24,6 +25,19 @@ internal sealed partial class LocalSimpleTextButton : NButton
             if (_label != null)
             {
                 _label.Text = _buttonText;
+            }
+        }
+    }
+
+    public int FontSize
+    {
+        get => _fontSize;
+        set
+        {
+            _fontSize = value;
+            if (_label != null)
+            {
+                _label.AddThemeFontSizeOverride("font_size", _fontSize);
             }
         }
     }
@@ -110,6 +124,9 @@ internal sealed partial class LocalSimpleTextButton : NButton
             MouseFilter = MouseFilterEnum.Ignore,
             Texture = ResourceLoader.Load<Texture2D>(ButtonTexturePath, null, ResourceLoader.CacheMode.Reuse)
         };
+        image.Set("expand_mode", 1);
+        image.Set("stretch_mode", 5);
+        image.SelfModulate = new Color(1f, 1f, 1f, 0.95f);
 
         Shader? shader = ResourceLoader.Load<Shader>(HsvShaderPath, null, ResourceLoader.CacheMode.Reuse);
         if (shader != null)
@@ -148,10 +165,10 @@ internal sealed partial class LocalSimpleTextButton : NButton
         label.AddThemeColorOverride("font_color", new Color("fdf6e3"));
         label.AddThemeColorOverride("font_outline_color", new Color("13202e"));
         label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.25f));
-        label.AddThemeConstantOverride("outline_size", 8);
+        label.AddThemeConstantOverride("outline_size", 7);
         label.AddThemeConstantOverride("shadow_offset_x", 2);
         label.AddThemeConstantOverride("shadow_offset_y", 1);
-        label.AddThemeFontSizeOverride("font_size", 20);
+        label.AddThemeFontSizeOverride("font_size", _fontSize);
         return label;
     }
 

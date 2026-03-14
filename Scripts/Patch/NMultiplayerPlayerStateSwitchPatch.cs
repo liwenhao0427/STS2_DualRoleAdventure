@@ -3,6 +3,7 @@ using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Multiplayer;
 using MegaCrit.Sts2.Core.Runs;
@@ -51,11 +52,11 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
             return;
         }
 
-        button.ButtonText = $"切{LocalSelfCoopContext.GetSlotLabel(state.Player.NetId)}";
+        button.ButtonText = $"《{LocalSelfCoopContext.GetSlotLabel(state.Player.NetId)}";
 
         // 注意：固定 X 轴对齐是用户明确要求，不能再按 Hitbox 宽度动态计算。
         // 之前 state.Hitbox.Size.X 会因名称/状态变化而偏移，造成三行按钮参差不齐。
-        float fixedX = state.GlobalPosition.X + 232f;
+        float fixedX = state.GetViewport().GetVisibleRect().Size.X * (272f / NGame.devResolution.X);
         button.GlobalPosition = new Vector2(fixedX, state.GlobalPosition.Y + 8f);
     }
 
@@ -69,10 +70,11 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
         LocalSimpleTextButton button = new LocalSimpleTextButton
         {
             Name = SwitchButtonName,
-            ButtonText = "切换",
+            ButtonText = "《",
             FocusMode = Control.FocusModeEnum.None,
-            Size = new Vector2(52f, 30f),
-            CustomMinimumSize = new Vector2(52f, 30f),
+            FontSize = 15,
+            Size = new Vector2(40f, 24f),
+            CustomMinimumSize = new Vector2(40f, 24f),
             TopLevel = true,
             ZIndex = 100
         };

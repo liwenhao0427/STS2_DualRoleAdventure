@@ -101,8 +101,9 @@ internal static class LocalCharacterSelectCountButtons
             Name = name,
             ButtonText = text,
             FocusMode = Control.FocusModeEnum.None,
-            Size = new Vector2(48f, 30f),
-            CustomMinimumSize = new Vector2(48f, 30f)
+            FontSize = 17,
+            Size = new Vector2(34f, 24f),
+            CustomMinimumSize = new Vector2(34f, 24f)
         };
         return button;
     }
@@ -118,7 +119,7 @@ internal static class LocalCharacterSelectCountButtons
 
         // 注意：该坐标经过实机对齐，目的是避免与确认按钮重叠导致 + 按钮不可点击。
         // 请不要随意改回靠右布局，如需改动先实测“+ 按钮在 2->3/4 人时可稳定点击”。
-        panel.Position = embarkButton.Position + new Vector2(-238f, 18f);
+        panel.Position = embarkButton.Position + new Vector2(-206f, 21f);
 
         if (panel.GetNodeOrNull<LocalSimpleTextButton>(MinusButtonName) is { } minusButton)
         {
@@ -127,7 +128,7 @@ internal static class LocalCharacterSelectCountButtons
 
         if (panel.GetNodeOrNull<LocalSimpleTextButton>(PlusButtonName) is { } plusButton)
         {
-            plusButton.Position = new Vector2(56f, 0f);
+            plusButton.Position = new Vector2(38f, 0f);
         }
     }
 
