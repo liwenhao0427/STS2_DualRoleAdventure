@@ -5,8 +5,44 @@ using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Models;
 
 namespace LocalMultiControl.Scripts.Patch;
+
+[HarmonyPatch(typeof(RelicModel), nameof(RelicModel.AfterObtained))]
+internal static class RelicAfterObtainedGoldMirrorGuardPatch
+{
+    private static readonly AsyncLocal<int> SuppressMirrorDepth = new();
+
+    internal static bool ShouldSuppressGoldMirror => SuppressMirrorDepth.Value > 0;
+
+    [HarmonyPrefix]
+    private static void Prefix()
+    {
+        SuppressMirrorDepth.Value++;
+    }
+
+    [HarmonyPostfix]
+    private static void Postfix(ref Task __result)
+    {
+        __result = ExitScopeAsync(__result);
+    }
+
+    private static async Task ExitScopeAsync(Task originalTask)
+    {
+        try
+        {
+            await originalTask;
+        }
+        finally
+        {
+            if (SuppressMirrorDepth.Value > 0)
+            {
+                SuppressMirrorDepth.Value--;
+            }
+        }
+    }
+}
 
 [HarmonyPatch(typeof(PlayerCmd), nameof(PlayerCmd.GainGold))]
 internal static class PlayerGainGoldMirrorPatch
@@ -22,6 +58,11 @@ internal static class PlayerGainGoldMirrorPatch
         }
 
         if (amount <= 0m || IsMirroring.Value)
+        {
+            return;
+        }
+
+        if (RelicAfterObtainedGoldMirrorGuardPatch.ShouldSuppressGoldMirror)
         {
             return;
         }
