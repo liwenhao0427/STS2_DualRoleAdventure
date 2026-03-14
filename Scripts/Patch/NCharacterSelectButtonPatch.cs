@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
@@ -11,6 +11,7 @@ internal static class NCharacterSelectButtonSelectPatch
     [HarmonyPrefix]
     private static bool Prefix(NCharacterSelectButton __instance)
     {
+        LocalSelfCoopContext.EnsureLobbySenderContext("character-button-select-prefix");
         return !TryReselectWhenAlreadySelected(__instance);
     }
 
@@ -36,9 +37,10 @@ internal static class NCharacterSelectButtonSelectPatch
                 return false;
             }
 
+            LocalSelfCoopContext.EnsureLobbySenderContext("character-button-reselect");
             selectDelegate.SelectCharacter(button, button.Character);
             AccessTools.Method(typeof(NCharacterSelectButton), "RefreshState")?.Invoke(button, Array.Empty<object>());
-            LocalMultiControlLogger.Info($"允许重复选角重提交流程: character={button.Character.Id.Entry}");
+            LocalMultiControlLogger.Info($"允许重复选角重新提交流程: character={button.Character.Id.Entry}");
             return true;
         }
         catch (Exception exception)
@@ -55,6 +57,7 @@ internal static class NCharacterSelectButtonOnPressPatch
     [HarmonyPrefix]
     private static void Prefix(NCharacterSelectButton __instance, ref bool __state)
     {
+        LocalSelfCoopContext.EnsureLobbySenderContext("character-button-on-press");
         __state = AccessTools.Field(typeof(NCharacterSelectButton), "_isSelected")?.GetValue(__instance) as bool? ?? false;
     }
 
@@ -81,6 +84,7 @@ internal static class NCharacterSelectButtonOnPressPatch
             }
 
             // 处理“已聚焦按钮重复点击不触发Select”的情况。
+            LocalSelfCoopContext.EnsureLobbySenderContext("character-button-on-press-reselect");
             selectDelegate.SelectCharacter(__instance, __instance.Character);
             AccessTools.Method(typeof(NCharacterSelectButton), "RefreshState")?.Invoke(__instance, Array.Empty<object>());
             LocalMultiControlLogger.Info($"允许重复点击已选角色: character={__instance.Character.Id.Entry}");

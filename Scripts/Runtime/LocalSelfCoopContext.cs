@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
@@ -24,7 +25,7 @@ internal static class LocalSelfCoopContext
 
     private static readonly List<ulong> _localPlayerIds = new() { 1, 2, 3, 4 };
 
-    private static int _desiredLocalPlayerCount = 4;
+    private static int _desiredLocalPlayerCount = 2;
 
     private static bool _isSyncingCharacterHighlight;
 
@@ -62,7 +63,7 @@ internal static class LocalSelfCoopContext
 
         List<ulong> ids = BuildSequentialPlayerIds(localPlatformPlayerId, _desiredLocalPlayerCount);
         ApplyLocalPlayerIds(ids);
-        LocalMultiControlLogger.Info($"鏈湴澶氭帶鐜╁ID宸茶В鏋? {string.Join(",", _localPlayerIds)}");
+        LocalMultiControlLogger.Info($"本地多控玩家ID已解析: {string.Join(",", _localPlayerIds)}");
         return PrimaryPlayerId;
     }
 
@@ -76,14 +77,14 @@ internal static class LocalSelfCoopContext
         List<ulong> normalized = NormalizePlayerIds(playerIds, fallbackPrimaryId: PrimaryPlayerId);
         if (normalized.Count < MinLocalPlayerCount)
         {
-            LocalMultiControlLogger.Warn($"蹇界暐鏃犳晥瀛樻。鐜╁ID鍒楄〃: {string.Join(",", playerIds)}");
+            LocalMultiControlLogger.Warn($"忽略无效存档玩家ID列表: {string.Join(",", playerIds)}");
             return;
         }
 
         _desiredLocalPlayerCount = Math.Clamp(normalized.Count, MinLocalPlayerCount, MaxLocalPlayerCount);
         ApplyLocalPlayerIds(normalized);
         CurrentLobbyEditingPlayerId = PrimaryPlayerId;
-        LocalMultiControlLogger.Info($"宸蹭粠瀛樻。鎭㈠鏈湴澶氭帶鐜╁ID: {string.Join(",", _localPlayerIds)}");
+        LocalMultiControlLogger.Info($"已从存档恢复本地多控玩家ID: {string.Join(",", _localPlayerIds)}");
     }
 
     public static bool IsSaveOwnedByLocalSelfCoop(SerializableRun run)
@@ -103,8 +104,10 @@ internal static class LocalSelfCoopContext
         IsEnabled = true;
         NetService = netService;
         CurrentLobbyEditingPlayerId = PrimaryPlayerId;
-        EnsureLobbySenderContext("enable");
-        LocalMultiControlLogger.Info($"鏈湴澶氭帶妯″紡宸插惎鐢紝鐩爣鐜╁鏁?{_desiredLocalPlayerCount}");
+        ActiveCharacterSelectScreen = null;
+        netService.SetCurrentSenderId(CurrentLobbyEditingPlayerId);
+        LocalContext.NetId = CurrentLobbyEditingPlayerId;
+        LocalMultiControlLogger.Info($"本地多控模式已启用，目标玩家数={_desiredLocalPlayerCount}");
     }
 
     public static void Disable(string reason)
@@ -120,7 +123,7 @@ internal static class LocalSelfCoopContext
         ActiveCharacterSelectScreen = null;
         _pendingEventAutoSwitchPlayerId = null;
         _eventAutoSwitchPending = false;
-        LocalMultiControlLogger.Info($"鏈湴澶氭帶妯″紡宸插叧闂紝鍘熷洜: {reason}");
+        LocalMultiControlLogger.Info($"本地多控模式已关闭，原因: {reason}");
     }
 
     public static bool SwitchLobbyEditingPlayer(bool next)
@@ -151,8 +154,8 @@ internal static class LocalSelfCoopContext
         SyncCharacterSelectHighlight();
 
         string slotLabel = GetSlotLabel(CurrentLobbyEditingPlayerId);
-        LocalMultiControlLogger.Info($"澶у巺缂栬緫瑙掕壊鍒囨崲: {previousPlayerId} -> {CurrentLobbyEditingPlayerId} (妲戒綅{slotLabel})");
-        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"澶у巺缂栬緫瑙掕壊: 妲戒綅{slotLabel}"));
+        LocalMultiControlLogger.Info($"大厅编辑角色切换: {previousPlayerId} -> {CurrentLobbyEditingPlayerId} (槽位{slotLabel})");
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"大厅编辑角色: 槽位{slotLabel}"));
         return true;
     }
 
@@ -171,7 +174,7 @@ internal static class LocalSelfCoopContext
         bool reconciled = ReconcileLobbyPlayerCount(source);
         if (!reconciled)
         {
-            LocalMultiControlLogger.Info($"宸叉洿鏂扮洰鏍囨湰鍦扮帺瀹舵暟: {oldCount} -> {targetCount}");
+            LocalMultiControlLogger.Info($"已更新目标本地玩家数: {oldCount} -> {targetCount}");
         }
 
         List<ulong> saveIds = _localPlayerIds.Take(_desiredLocalPlayerCount).ToList();
@@ -202,7 +205,7 @@ internal static class LocalSelfCoopContext
         EnsureLobbyEditingPlayerIsValid();
         NetService.SetCurrentSenderId(CurrentLobbyEditingPlayerId);
         LocalContext.NetId = CurrentLobbyEditingPlayerId;
-        LocalMultiControlLogger.Info($"澶у巺鎺у埗涓婁笅鏂囧悓姝? player={CurrentLobbyEditingPlayerId}, source={source}");
+        LocalMultiControlLogger.Info($"大厅控制上下文同步: player={CurrentLobbyEditingPlayerId}, source={source}");
         return true;
     }
 
@@ -227,7 +230,7 @@ internal static class LocalSelfCoopContext
         }
 
         _pendingEventAutoSwitchPlayerId = playerId;
-        LocalMultiControlLogger.Info($"璁板綍浜嬩欢鑷姩鍒囨崲璇锋眰: player={playerId}");
+        LocalMultiControlLogger.Info($"记录事件自动切换请求: player={playerId}");
     }
 
     public static bool ShouldQueueEventAutoSwitchAfterEventState(EventModel eventModel)
@@ -278,6 +281,13 @@ internal static class LocalSelfCoopContext
         }
 
         NCharacterSelectScreen screen = ActiveCharacterSelectScreen;
+        StartRunLobby? lobby = AccessTools.Field(typeof(NCharacterSelectScreen), "_lobby")?.GetValue(screen) as StartRunLobby;
+        if (lobby == null)
+        {
+            LocalMultiControlLogger.Warn($"大厅玩家同步跳过：Lobby尚未初始化，source={source}");
+            return false;
+        }
+
         int targetCount = Math.Clamp(_desiredLocalPlayerCount, MinLocalPlayerCount, MaxLocalPlayerCount);
         EnsureLocalPlayerIdCapacity(targetCount);
 
@@ -289,14 +299,14 @@ internal static class LocalSelfCoopContext
 
         foreach (ulong playerId in targetPlayerIds)
         {
-            bool exists = screen.Lobby.Players.Any((player) => player.id == playerId);
+            bool exists = lobby.Players.Any((player) => player.id == playerId);
             if (exists)
             {
                 continue;
             }
 
             NetService.SetCurrentSenderId(playerId);
-            _ = screen.Lobby.AddLocalHostPlayerInternal(serializableUnlockState, maxAscension);
+            _ = lobby.AddLocalHostPlayerInternal(serializableUnlockState, maxAscension);
         }
 
         List<ulong> removablePlayerIds = _localPlayerIds
@@ -305,15 +315,15 @@ internal static class LocalSelfCoopContext
             .ToList();
         foreach (ulong removableId in removablePlayerIds)
         {
-            int playerIndex = screen.Lobby.Players.FindIndex((player) => player.id == removableId);
+            int playerIndex = lobby.Players.FindIndex((player) => player.id == removableId);
             if (playerIndex < 0)
             {
                 continue;
             }
 
-            LobbyPlayer removedPlayer = screen.Lobby.Players[playerIndex];
-            screen.Lobby.Players.RemoveAt(playerIndex);
-            screen.Lobby.InputSynchronizer.OnPlayerDisconnected(removedPlayer.id);
+            LobbyPlayer removedPlayer = lobby.Players[playerIndex];
+            lobby.Players.RemoveAt(playerIndex);
+            lobby.InputSynchronizer.OnPlayerDisconnected(removedPlayer.id);
             screen.RemotePlayerDisconnected(removedPlayer);
         }
 
@@ -324,20 +334,20 @@ internal static class LocalSelfCoopContext
                 continue;
             }
 
-            int playerIndex = screen.Lobby.Players.FindIndex((player) => player.id == playerId);
+            int playerIndex = lobby.Players.FindIndex((player) => player.id == playerId);
             if (playerIndex < 0)
             {
                 continue;
             }
 
-            LobbyPlayer lobbyPlayer = screen.Lobby.Players[playerIndex];
+            LobbyPlayer lobbyPlayer = lobby.Players[playerIndex];
             if (lobbyPlayer.isReady)
             {
                 continue;
             }
 
             lobbyPlayer.isReady = true;
-            screen.Lobby.Players[playerIndex] = lobbyPlayer;
+            lobby.Players[playerIndex] = lobbyPlayer;
             screen.PlayerChanged(lobbyPlayer);
         }
 
@@ -346,7 +356,7 @@ internal static class LocalSelfCoopContext
         SyncCharacterSelectHighlight();
 
         LocalMultiControlLogger.Info(
-            $"澶у巺鏈湴鐜╁鏁板凡鍚屾: target={targetCount}, actual={GetActiveLobbyLocalPlayerIds().Count}, source={source}");
+            $"大厅本地玩家数已同步: target={targetCount}, actual={GetActiveLobbyLocalPlayerIds().Count}, source={source}");
         return true;
     }
 
@@ -372,12 +382,18 @@ internal static class LocalSelfCoopContext
 
     private static List<ulong> GetActiveLobbyLocalPlayerIds()
     {
-        if (ActiveCharacterSelectScreen == null)
+        if (ActiveCharacterSelectScreen == null || !GodotObject.IsInstanceValid(ActiveCharacterSelectScreen))
         {
             return _localPlayerIds.Take(_desiredLocalPlayerCount).ToList();
         }
 
-        return ActiveCharacterSelectScreen.Lobby.Players
+        StartRunLobby? lobby = AccessTools.Field(typeof(NCharacterSelectScreen), "_lobby")?.GetValue(ActiveCharacterSelectScreen) as StartRunLobby;
+        if (lobby == null)
+        {
+            return _localPlayerIds.Take(_desiredLocalPlayerCount).ToList();
+        }
+
+        return lobby.Players
             .Where((player) => _localPlayerIds.Contains(player.id))
             .Select((player) => player.id)
             .Distinct()
@@ -397,14 +413,20 @@ internal static class LocalSelfCoopContext
             _isSyncingCharacterHighlight = true;
 
             EnsureLobbyEditingPlayerIsValid();
-            int localPlayerIndex = ActiveCharacterSelectScreen.Lobby.Players
+            StartRunLobby? lobby = AccessTools.Field(typeof(NCharacterSelectScreen), "_lobby")?.GetValue(ActiveCharacterSelectScreen) as StartRunLobby;
+            if (lobby == null)
+            {
+                return;
+            }
+
+            int localPlayerIndex = lobby.Players
                 .FindIndex((player) => player.id == CurrentLobbyEditingPlayerId);
             if (localPlayerIndex < 0)
             {
                 return;
             }
 
-            LobbyPlayer localPlayer = ActiveCharacterSelectScreen.Lobby.Players[localPlayerIndex];
+            LobbyPlayer localPlayer = lobby.Players[localPlayerIndex];
             Control? charButtonContainer = AccessTools.Field(typeof(NCharacterSelectScreen), "_charButtonContainer")
                 ?.GetValue(ActiveCharacterSelectScreen) as Control;
             if (charButtonContainer == null)
@@ -415,7 +437,7 @@ internal static class LocalSelfCoopContext
             List<NCharacterSelectButton> buttons = charButtonContainer.GetChildren().OfType<NCharacterSelectButton>().ToList();
             foreach (NCharacterSelectButton button in buttons)
             {
-                foreach (LobbyPlayer player in ActiveCharacterSelectScreen.Lobby.Players)
+                foreach (LobbyPlayer player in lobby.Players)
                 {
                     button.OnRemotePlayerDeselected(player.id);
                 }
@@ -432,7 +454,7 @@ internal static class LocalSelfCoopContext
                 }
             }
 
-            foreach (LobbyPlayer player in ActiveCharacterSelectScreen.Lobby.Players)
+            foreach (LobbyPlayer player in lobby.Players)
             {
                 if (player.id == localPlayer.id)
                 {
@@ -452,7 +474,7 @@ internal static class LocalSelfCoopContext
         }
         catch (Exception exception)
         {
-            LocalMultiControlLogger.Warn($"鍚屾瑙掕壊閫夋嫨楂樹寒澶辫触: {exception.Message}");
+            LocalMultiControlLogger.Warn($"同步角色选择高亮失败: {exception.Message}");
         }
         finally
         {

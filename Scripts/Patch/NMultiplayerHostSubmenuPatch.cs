@@ -4,10 +4,13 @@ using System.Linq;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
+using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Saves;
 
 namespace LocalMultiControl.Scripts.Patch;
@@ -88,7 +91,7 @@ internal static class NMultiplayerHostSubmenuPatch
         Node? descriptionNode = button.FindChild("Description", recursive: true, owned: false);
         if (descriptionNode is RichTextLabel description)
         {
-            description.Text = "在本机创建最多四名可切换角色，进行本地协作。";
+            description.Text = "在本机创建2~4名可切换角色，进行本地协作。\n进入后可用 +/- 调整人数。";
         }
     }
 
@@ -145,7 +148,7 @@ internal static class NMultiplayerHostSubmenuPatch
         }
 
         ulong primaryPlayerId = LocalSelfCoopContext.ResolvePrimaryPlayerId();
-        LocalSelfCoopSaveTag.MarkCurrentProfile(LocalSelfCoopContext.LocalPlayerIds);
+        LocalSelfCoopSaveTag.MarkCurrentProfile(LocalSelfCoopContext.LocalPlayerIds.Take(LocalSelfCoopContext.DesiredLocalPlayerCount).ToList());
         LocalLoopbackHostGameService netService = new LocalLoopbackHostGameService(primaryPlayerId);
         LocalSelfCoopContext.Enable(netService);
 
@@ -158,6 +161,7 @@ internal static class NMultiplayerHostSubmenuPatch
         }
 
         stack.Push(characterSelectScreen);
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create("已进入本地多角色：按 +/- 调整人数（2~4）"));
         LocalMultiControlLogger.Info("已跳转到本地多角色队伍角色选择界面。");
     }
 
