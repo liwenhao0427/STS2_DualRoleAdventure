@@ -170,3 +170,11 @@
 - 当本次会话包含代码修改，且 `dotnet build LocalMultiControl.csproj -c Debug` 成功并产出项目根 `DualRoleAdventure.dll` 后，代理在会话结束前默认执行：`powershell -ExecutionPolicy Bypass -File .\copy_pck_to_game.ps1`。
 - 该步骤用于将最新 pck/dll 应用到游戏 `mods` 目录，作为联调默认收尾动作。
 - 若用户在当次会话中明确说明“不执行部署脚本”，则跳过此步骤。
+
+## 16. PCK 生成与复制执行顺序（新增）
+
+- `copy_pck_to_game.ps1` 保持为“仅复制文件”脚本，不在脚本内执行 Godot 打包。
+- 当会话内完成代码修改且 DLL 打包成功后，先执行以下命令生成 pck：
+  - `& "C:\Users\temp\项目\杀戮尖塔2Mod\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64.exe" --path . --export-pack "Windows Desktop" DualRoleAdventure.pck`
+- pck 生成成功后，再执行复制脚本：
+  - `powershell -ExecutionPolicy Bypass -File .\copy_pck_to_game.ps1`
