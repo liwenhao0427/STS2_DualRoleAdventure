@@ -154,7 +154,8 @@ internal static class NMultiplayerHostSubmenuPatch
 
         NCharacterSelectScreen characterSelectScreen = stack.GetSubmenuType<NCharacterSelectScreen>();
         LocalSelfCoopContext.ActiveCharacterSelectScreen = characterSelectScreen;
-        characterSelectScreen.InitializeMultiplayerAsHost(netService, LocalSelfCoopContext.DesiredLocalPlayerCount);
+        // 大厅容量固定为4，实际活跃人数由 LocalSelfCoopContext 按目标人数裁剪到2~4。
+        characterSelectScreen.InitializeMultiplayerAsHost(netService, LocalSelfCoopContext.LocalPlayerIds.Count);
         if (!LocalSelfCoopContext.BootstrapLocalPlayers(characterSelectScreen))
         {
             LocalMultiControlLogger.Warn("初始化本地多角色队伍失败，已回退到默认流程。");
