@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Patch;
@@ -38,6 +39,7 @@ internal static class LocalMultiControlRuntime
     private static long _allNoPlayableSinceMs = -1L;
     private static int _allNoPlayableRound = -1;
     private static readonly HashSet<int> _allPlayersAutoEndedRounds = new HashSet<int>();
+    private static int _lastAutoEndCombatIdentity = -1;
 
     public static LocalMultiSessionState SessionState => Session;
 
@@ -70,6 +72,7 @@ internal static class LocalMultiControlRuntime
         _allNoPlayableSinceMs = -1L;
         _allNoPlayableRound = -1;
         _allPlayersAutoEndedRounds.Clear();
+        _lastAutoEndCombatIdentity = -1;
         LocalMerchantInventoryRuntime.Clear();
         LocalSelfCoopContext.Disable("RunManager.CleanUp");
         LocalMultiControlLogger.Info("RunManager.CleanUp 后已完成本地多控会话清理。");
@@ -183,6 +186,8 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
+        RefreshAutoEndTrackingForCombat(combatState);
+
         bool anyPlayerHasPlayableCards = false;
         bool anyWakuuPlayerHasPlayableCards = false;
         foreach (Player player in combatState.Players)
@@ -196,7 +201,7 @@ internal static class LocalMultiControlRuntime
             if (hasPlayableCards)
             {
                 anyPlayerHasPlayableCards = true;
-                _wakuuAutoEndIssued.Remove($"{combatState.RoundNumber}:{player.NetId}");
+                _wakuuAutoEndIssued.Remove($"{_lastAutoEndCombatIdentity}:{combatState.RoundNumber}:{player.NetId}");
             }
 
             if (player.GetRelic<WhisperingEarring>() != null && hasPlayableCards)
@@ -262,7 +267,7 @@ internal static class LocalMultiControlRuntime
                 continue;
             }
 
-            string key = $"{combatState.RoundNumber}:{player.NetId}";
+            string key = $"{_lastAutoEndCombatIdentity}:{combatState.RoundNumber}:{player.NetId}";
             if (!_wakuuAutoEndIssued.Add(key))
             {
                 continue;
@@ -279,6 +284,22 @@ internal static class LocalMultiControlRuntime
         }
 
         return endedAnyPlayer;
+    }
+
+    private static void RefreshAutoEndTrackingForCombat(CombatState combatState)
+    {
+        int combatIdentity = RuntimeHelpers.GetHashCode(combatState);
+        if (_lastAutoEndCombatIdentity == combatIdentity)
+        {
+            return;
+        }
+
+        _lastAutoEndCombatIdentity = combatIdentity;
+        _wakuuAutoEndIssued.Clear();
+        _allNoPlayableSinceMs = -1L;
+        _allNoPlayableRound = -1;
+        _allPlayersAutoEndedRounds.Clear();
+        LocalMultiControlLogger.Info($"检测到战斗场次切换，重置瓦库自动结束回合状态: combat={combatIdentity}");
     }
 
     private static async Task GrantWakuuRelicsAsync(RunState runState)
