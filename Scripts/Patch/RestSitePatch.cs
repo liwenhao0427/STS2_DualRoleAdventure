@@ -101,11 +101,9 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
         }
 
         List<RestSiteOption> sourceOptionsSnapshot = new List<RestSiteOption>();
-        bool chooseFromSmith = false;
         if (localPlayerId.HasValue)
         {
             sourceOptionsSnapshot = synchronizer.GetOptionsForPlayer(localPlayerId.Value).ToList();
-            chooseFromSmith = IsSmithOption(sourceOptionsSnapshot, optionIndex);
         }
 
         bool success = await originalTask;
@@ -122,26 +120,20 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
             return success;
         }
 
-        if (!chooseFromSmith)
-        {
-            LocalMultiControlLogger.Info(
-                $"休息区本次不是升级选项，不触发自动切人: player={localPlayerId.Value}, optionIndex={optionIndex}, snapshot={DescribeOptions(sourceOptionsSnapshot)}");
-            return success;
-        }
-
-        ulong? nextPlayerId = FindNextPlayerWithSmithOption(synchronizer, localPlayerId.Value);
+        ulong? nextPlayerId = FindNextPlayerWithAnyOption(synchronizer, localPlayerId.Value);
         if (!nextPlayerId.HasValue)
         {
-            LocalMultiControlLogger.Info($"休息区升级后未找到待升级角色，流程结束: source={localPlayerId.Value}");
+            LocalMultiControlLogger.Info($"休息区已无待选角色，流程结束: source={localPlayerId.Value}");
             return success;
         }
 
-        // 改为“切人 + 玩家手动点升级”，避免后台串行自动代选导致随机升级。
+        // 固定策略：每位角色都必须各选一次，当前角色成功后切到下一位仍有选项的角色。
         Callable.From(delegate
         {
-            LocalMultiControlRuntime.SwitchControlledPlayerTo(nextPlayerId.Value, "rest-site-next-manual-smith");
+            LocalMultiControlRuntime.SwitchControlledPlayerTo(nextPlayerId.Value, "rest-site-next-mandatory-choice");
         }).CallDeferred();
-        LocalMultiControlLogger.Info($"休息区升级切换到下一位待选角色: {localPlayerId.Value} -> {nextPlayerId.Value}");
+        LocalMultiControlLogger.Info(
+            $"休息区选择成功后切换到下一位待选角色: {localPlayerId.Value} -> {nextPlayerId.Value}, optionIndex={optionIndex}, snapshot={DescribeOptions(sourceOptionsSnapshot)}");
 
         return success;
     }
@@ -157,17 +149,7 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
         return null;
     }
 
-    private static bool IsSmithOption(IReadOnlyList<RestSiteOption> options, int optionIndex)
-    {
-        if (optionIndex < 0 || optionIndex >= options.Count)
-        {
-            return false;
-        }
-
-        return options[optionIndex] is SmithRestSiteOption;
-    }
-
-    private static ulong? FindNextPlayerWithSmithOption(RestSiteSynchronizer synchronizer, ulong sourcePlayerId)
+    private static ulong? FindNextPlayerWithAnyOption(RestSiteSynchronizer synchronizer, ulong sourcePlayerId)
     {
         RunState? runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null || runState.Players.Count <= 1)
@@ -187,26 +169,13 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
             int index = (sourceIndex + step) % players.Count;
             Player candidate = players[index];
             IReadOnlyList<RestSiteOption> options = synchronizer.GetOptionsForPlayer(candidate.NetId);
-            if (FindSmithOptionIndex(options) >= 0)
+            if (options.Count > 0)
             {
                 return candidate.NetId;
             }
         }
 
         return null;
-    }
-
-    private static int FindSmithOptionIndex(IReadOnlyList<RestSiteOption> options)
-    {
-        for (int i = 0; i < options.Count; i++)
-        {
-            if (options[i] is SmithRestSiteOption)
-            {
-                return i;
-            }
-        }
-
-        return -1;
     }
 
     private static string DescribeOptions(IReadOnlyList<RestSiteOption> options)

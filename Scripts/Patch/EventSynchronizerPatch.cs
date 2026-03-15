@@ -25,7 +25,6 @@ internal static class EventSynchronizerPatch
         internal bool IsPatched;
         internal ulong? PreviousContextNetId;
         internal ulong PreviousSenderId;
-        internal bool IsManualSelectionOption;
     }
 
     [HarmonyPrefix]
@@ -36,8 +35,6 @@ internal static class EventSynchronizerPatch
         {
             return;
         }
-
-        __state.IsManualSelectionOption = IsManualSelectionOption(__instance, index);
 
         if (Volatile.Read(ref _isBroadcastingLocalEventOption) != 0)
         {
@@ -99,12 +96,6 @@ internal static class EventSynchronizerPatch
                 if (ShouldSkipBroadcastForNeow(synchronizer))
                 {
                     LocalMultiControlLogger.Info("检测到涅奥事件，跳过普通事件广播，保持各角色独立开局选项。");
-                    return;
-                }
-
-                if (state.IsManualSelectionOption)
-                {
-                    LocalMultiControlLogger.Info("检测到需要手动选牌/选项的事件分支，跳过自动广播，改为切人后逐角色手动完成。");
                     return;
                 }
 
@@ -191,44 +182,6 @@ internal static class EventSynchronizerPatch
         }
     }
 
-    private static bool IsManualSelectionOption(EventSynchronizer synchronizer, int index)
-    {
-        try
-        {
-            EventModel localEvent = synchronizer.GetLocalEvent();
-            if (localEvent.CurrentOptions.Count == 0 || index < 0 || index >= localEvent.CurrentOptions.Count)
-            {
-                return false;
-            }
-
-            EventOption option = localEvent.CurrentOptions[index];
-            string textKey = option.TextKey ?? string.Empty;
-            string description = option.Description?.GetRawText() ?? string.Empty;
-
-            if (textKey.Contains("SCROLL_BOXES", StringComparison.OrdinalIgnoreCase) ||
-                textKey.Contains("DARK", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            if (description.Contains("选择", StringComparison.Ordinal) ||
-                description.Contains("移除", StringComparison.Ordinal) ||
-                description.Contains("变形", StringComparison.Ordinal) ||
-                description.Contains("升级一张", StringComparison.Ordinal) ||
-                description.Contains("select", StringComparison.OrdinalIgnoreCase) ||
-                description.Contains("remove", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static bool ShouldSkipBroadcastForNeow(EventSynchronizer synchronizer)
     {
         try
@@ -267,9 +220,11 @@ internal static class EventSynchronizerPatch
             ?? LocalSelfCoopContext.PrimaryPlayerId;
         List<Player> targetPlayers = playerCollection.Players
             .Where((player) => player.NetId != sourcePlayerId)
+            .Where((player) => ShouldApplyChoiceToPlayer(synchronizer, player, index))
             .ToList();
         if (targetPlayers.Count == 0)
         {
+            LocalMultiControlLogger.Info($"普通事件无可广播目标: source={sourcePlayerId}, option={index}");
             return;
         }
 
@@ -312,6 +267,24 @@ internal static class EventSynchronizerPatch
             loopbackService.SetCurrentSenderId(previousSenderId);
             LocalContext.NetId = previousContextNetId;
             Volatile.Write(ref _isBroadcastingLocalEventOption, 0);
+        }
+    }
+
+    private static bool ShouldApplyChoiceToPlayer(EventSynchronizer synchronizer, Player player, int index)
+    {
+        try
+        {
+            EventModel eventModel = synchronizer.GetEventForPlayer(player);
+            if (eventModel.IsFinished)
+            {
+                return false;
+            }
+
+            return index >= 0 && index < eventModel.CurrentOptions.Count;
+        }
+        catch
+        {
+            return false;
         }
     }
 
