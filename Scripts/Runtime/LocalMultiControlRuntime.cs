@@ -401,6 +401,7 @@ internal static class LocalMultiControlRuntime
         RefreshRestSiteForControlledPlayer(currentControlledPlayerId.Value);
         RefreshEventRoomForControlledPlayer(currentControlledPlayerId.Value);
         LocalMerchantInventoryRuntime.RefreshShopRoomForPlayer(currentControlledPlayerId.Value);
+        EnsureTreasureCursorVisibleAfterSwitch(source);
         LocalMultiControlLogger.Info($"控制上下文已更新: {previousNetId?.ToString() ?? "null"} -> {currentControlledPlayerId.Value}, source={source}");
         if (source != "run-launched")
         {
@@ -940,6 +941,50 @@ internal static class LocalMultiControlRuntime
         {
             LocalMultiControlLogger.Warn($"刷新回合结束按钮状态失败: {exception.Message}");
         }
+    }
+
+    private static void EnsureTreasureCursorVisibleAfterSwitch(string source)
+    {
+        if (!IsTreasurePickingActive())
+        {
+            return;
+        }
+
+        try
+        {
+            Input.MouseMode = Input.MouseModeEnum.Visible;
+            Callable.From(delegate
+            {
+                Input.MouseMode = Input.MouseModeEnum.Visible;
+            }).CallDeferred();
+            LocalMultiControlLogger.Info($"宝箱切人后已强制恢复鼠标可见: source={source}");
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"宝箱切人后恢复鼠标失败: source={source}, error={exception.Message}");
+        }
+    }
+
+    private static bool IsTreasurePickingActive()
+    {
+        if (!RunManager.Instance.IsInProgress)
+        {
+            return false;
+        }
+
+        TreasureRoomRelicSynchronizer? synchronizer = RunManager.Instance.TreasureRoomRelicSynchronizer;
+        if (synchronizer?.CurrentRelics == null || synchronizer.CurrentRelics.Count == 0)
+        {
+            return false;
+        }
+
+        List<int?>? votes = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_votes")?.GetValue(synchronizer) as List<int?>;
+        if (votes == null || votes.Count == 0)
+        {
+            return false;
+        }
+
+        return votes.Any((vote) => !vote.HasValue);
     }
 
 }

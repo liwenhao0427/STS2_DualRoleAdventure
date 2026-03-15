@@ -97,20 +97,42 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
         ulong? localPlayerId = LocalContext.NetId;
         if (!localPlayerId.HasValue)
         {
-            localPlayerId = AccessTools.Field(typeof(RestSiteSynchronizer), "_localPlayerId")?.GetValue(synchronizer) as ulong?;
+            localPlayerId = ReadLocalPlayerIdFromSynchronizer(synchronizer);
         }
 
-        bool chooseFromSmith = localPlayerId.HasValue && IsSmithOption(synchronizer, localPlayerId.Value, optionIndex);
+        List<RestSiteOption> sourceOptionsSnapshot = new List<RestSiteOption>();
+        bool chooseFromSmith = false;
+        if (localPlayerId.HasValue)
+        {
+            sourceOptionsSnapshot = synchronizer.GetOptionsForPlayer(localPlayerId.Value).ToList();
+            chooseFromSmith = IsSmithOption(sourceOptionsSnapshot, optionIndex);
+        }
 
         bool success = await originalTask;
-        if (!success || !chooseFromSmith || !localPlayerId.HasValue)
+        if (!localPlayerId.HasValue)
         {
+            LocalMultiControlLogger.Warn($"休息区升级切换失败：无法识别当前本地角色，optionIndex={optionIndex}");
+            return success;
+        }
+
+        if (!success)
+        {
+            LocalMultiControlLogger.Warn(
+                $"休息区选项执行失败，不触发自动切人: player={localPlayerId.Value}, optionIndex={optionIndex}, snapshot={DescribeOptions(sourceOptionsSnapshot)}");
+            return success;
+        }
+
+        if (!chooseFromSmith)
+        {
+            LocalMultiControlLogger.Info(
+                $"休息区本次不是升级选项，不触发自动切人: player={localPlayerId.Value}, optionIndex={optionIndex}, snapshot={DescribeOptions(sourceOptionsSnapshot)}");
             return success;
         }
 
         ulong? nextPlayerId = FindNextPlayerWithSmithOption(synchronizer, localPlayerId.Value);
         if (!nextPlayerId.HasValue)
         {
+            LocalMultiControlLogger.Info($"休息区升级后未找到待升级角色，流程结束: source={localPlayerId.Value}");
             return success;
         }
 
@@ -124,9 +146,19 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
         return success;
     }
 
-    private static bool IsSmithOption(RestSiteSynchronizer synchronizer, ulong playerId, int optionIndex)
+    private static ulong? ReadLocalPlayerIdFromSynchronizer(RestSiteSynchronizer synchronizer)
     {
-        IReadOnlyList<RestSiteOption> options = synchronizer.GetOptionsForPlayer(playerId);
+        object? fieldValue = AccessTools.Field(typeof(RestSiteSynchronizer), "_localPlayerId")?.GetValue(synchronizer);
+        if (fieldValue is ulong fieldPlayerId)
+        {
+            return fieldPlayerId;
+        }
+
+        return null;
+    }
+
+    private static bool IsSmithOption(IReadOnlyList<RestSiteOption> options, int optionIndex)
+    {
         if (optionIndex < 0 || optionIndex >= options.Count)
         {
             return false;
@@ -175,6 +207,16 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
         }
 
         return -1;
+    }
+
+    private static string DescribeOptions(IReadOnlyList<RestSiteOption> options)
+    {
+        if (options.Count == 0)
+        {
+            return "[]";
+        }
+
+        return "[" + string.Join(", ", options.Select((option, index) => $"{index}:{option.GetType().Name}")) + "]";
     }
 }
 
