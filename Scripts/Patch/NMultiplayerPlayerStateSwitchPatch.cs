@@ -5,6 +5,7 @@ using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
@@ -141,7 +142,21 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
             return;
         }
 
-        LocalControlSwitchGuard.TrySwitchTo(player.NetId, source);
+        if (!LocalControlSwitchGuard.TrySwitchTo(player.NetId, source))
+        {
+            return;
+        }
+
+        TreasureRoomRelicSynchronizer? treasureSynchronizer = RunManager.Instance?.TreasureRoomRelicSynchronizer;
+        if (treasureSynchronizer == null || treasureSynchronizer.CurrentRelics == null)
+        {
+            return;
+        }
+
+        _ = TreasureRoomRelicSynchronizerPatch.TryAutoSwitchToNextUnpickedPlayer(
+            treasureSynchronizer,
+            player.NetId,
+            "treasure-skip-picked-player");
     }
 
     private static Rect2 ResolveIdAnchorRect(NMultiplayerPlayerState state)
