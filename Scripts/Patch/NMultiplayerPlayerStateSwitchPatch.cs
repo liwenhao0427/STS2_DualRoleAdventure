@@ -5,6 +5,7 @@ using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Multiplayer;
@@ -30,6 +31,8 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
 
     private static readonly Vector2 SmallButtonSize = new(68f, 32f);
     private static readonly Vector2 FallbackOffset = new(248f, 8f);
+    private static readonly Vector2 DefaultAnchorOffset = new(2f, 0f);
+    private const float HpAnchorXOffset = 8f;
 
     public static void Ensure(NMultiplayerPlayerState state)
     {
@@ -61,7 +64,8 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
 
         button.Size = SmallButtonSize;
         button.CustomMinimumSize = SmallButtonSize;
-        button.GlobalPosition = anchorRect.Position + new Vector2(2f, 0f);
+        Vector2 targetPosition = ResolveSwitchButtonPosition(state, anchorRect);
+        button.GlobalPosition = targetPosition;
     }
 
     private static void EnsureSwitchButton(NMultiplayerPlayerState state)
@@ -156,6 +160,17 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
 
         Vector2 fallbackPosition = state.GlobalPosition + FallbackOffset;
         return new Rect2(fallbackPosition, new Vector2(92f, SmallButtonSize.Y));
+    }
+
+    private static Vector2 ResolveSwitchButtonPosition(NMultiplayerPlayerState state, Rect2 idAnchorRect)
+    {
+        NHealthBar? healthBar = AccessTools.Field(typeof(NMultiplayerPlayerState), "_healthBar")?.GetValue(state) as NHealthBar;
+        if (healthBar?.HpBarContainer != null && GodotObject.IsInstanceValid(healthBar.HpBarContainer))
+        {
+            return new Vector2(healthBar.HpBarContainer.GlobalPosition.X + HpAnchorXOffset, idAnchorRect.Position.Y);
+        }
+
+        return idAnchorRect.Position + DefaultAnchorOffset;
     }
 
     private static void HideOriginalIdLabel(NMultiplayerPlayerState state)
