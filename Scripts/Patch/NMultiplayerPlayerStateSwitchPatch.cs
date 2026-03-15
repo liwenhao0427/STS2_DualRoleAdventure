@@ -32,7 +32,7 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
     private static readonly Vector2 SmallButtonSize = new(68f, 32f);
     private static readonly Vector2 FallbackOffset = new(248f, 8f);
     private static readonly Vector2 DefaultAnchorOffset = new(2f, 0f);
-    private const float HpAnchorXOffset = 8f;
+    private const float HpAnchorXOffset = 12f;
 
     public static void Ensure(NMultiplayerPlayerState state)
     {
@@ -167,7 +167,9 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
         NHealthBar? healthBar = AccessTools.Field(typeof(NMultiplayerPlayerState), "_healthBar")?.GetValue(state) as NHealthBar;
         if (healthBar?.HpBarContainer != null && GodotObject.IsInstanceValid(healthBar.HpBarContainer))
         {
-            return new Vector2(healthBar.HpBarContainer.GlobalPosition.X + HpAnchorXOffset, idAnchorRect.Position.Y);
+            Control hpBarContainer = healthBar.HpBarContainer;
+            float targetX = hpBarContainer.GlobalPosition.X + hpBarContainer.Size.X - (SmallButtonSize.X * 0.5f) + HpAnchorXOffset;
+            return new Vector2(targetX, idAnchorRect.Position.Y);
         }
 
         return idAnchorRect.Position + DefaultAnchorOffset;
