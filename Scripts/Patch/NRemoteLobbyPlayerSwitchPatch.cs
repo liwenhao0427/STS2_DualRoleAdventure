@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
@@ -26,9 +27,16 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
     private const string WakuuToggleName = "LocalLobbyPlayerWakuuToggle";
     private const string WakuuHintName = "LocalLobbyPlayerWakuuHint";
     private const string TrackerName = "LocalLobbyPlayerSwitchTracker";
+    private const string GlobalWakuuToggleName = "LocalLobbyGlobalWakuuToggle";
+    private const string GlobalWakuuLabelName = "LocalLobbyGlobalWakuuLabel";
+
+    private const float ColumnMergeTolerance = 40f;
+    private const float MinColumnGap = 140f;
+    private const float ColumnRightShift = 18f;
 
     private static readonly Vector2 SelectorButtonSize = new(52f, 28f);
     private static readonly Vector2 WakuuToggleSize = new(30f, 28f);
+    private static readonly Vector2 GlobalToggleSize = new(44f, 28f);
     private static readonly Vector2 AnchorFallbackOffset = new(128f, 3f);
 
     public static void Ensure(NRemoteLobbyPlayer playerNode)
@@ -50,27 +58,28 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             return;
         }
 
-        bool inCharacterSelect = IsInsideCharacterSelect(playerNode);
+        NCharacterSelectScreen? screen = TryGetCharacterSelectScreen(playerNode);
         bool shouldShow = LocalSelfCoopContext.IsEnabled
                           && !RunManager.Instance.IsInProgress
-                          && inCharacterSelect
+                          && screen != null
                           && LocalSelfCoopContext.LocalPlayerIds.Contains(playerNode.PlayerId);
 
         button.Visible = shouldShow;
         wakuuToggle.Visible = shouldShow;
         wakuuHint.Visible = false;
 
-        if (!shouldShow)
+        if (!shouldShow || screen == null)
         {
             RestoreOriginalIdLabel(playerNode);
+            RefreshGlobalWakuuToggle(screen);
             return;
         }
 
         button.ButtonText = string.Empty;
-        Rect2 anchorRect = ResolveIdAnchorRect(playerNode);
+        AnchorLayout layout = ResolveAnchorLayout(screen, playerNode);
         HideOriginalIdLabel(playerNode);
 
-        button.GlobalPosition = anchorRect.Position + new Vector2(0f, -1f);
+        button.GlobalPosition = new Vector2(layout.ColumnX, layout.AnchorRect.Position.Y - 1f);
         button.Size = SelectorButtonSize;
         button.CustomMinimumSize = SelectorButtonSize;
 
@@ -79,6 +88,8 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         wakuuToggle.GlobalPosition = button.GlobalPosition + new Vector2(button.Size.X + 4f, 0f);
         wakuuToggle.Size = WakuuToggleSize;
         wakuuToggle.CustomMinimumSize = WakuuToggleSize;
+
+        RefreshGlobalWakuuToggle(screen);
     }
 
     private static void EnsureButton(NRemoteLobbyPlayer playerNode)
@@ -152,11 +163,104 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             ZIndex = 90
         };
 
-        hint.AddThemeFontSizeOverride("font_size", 16);
-        hint.AddThemeColorOverride("font_color", new Color("f3efe6"));
-        hint.AddThemeColorOverride("font_outline_color", new Color("111111"));
-        hint.AddThemeConstantOverride("outline_size", 5);
         playerNode.AddChildSafely(hint);
+    }
+
+    private static void EnsureGlobalWakuuToggle(NCharacterSelectScreen screen)
+    {
+        if (screen.GetNodeOrNull<CheckButton>(GlobalWakuuToggleName) == null)
+        {
+            CheckButton toggle = new()
+            {
+                Name = GlobalWakuuToggleName,
+                Text = string.Empty,
+                FocusMode = Control.FocusModeEnum.None,
+                MouseFilter = Control.MouseFilterEnum.Stop,
+                Size = GlobalToggleSize,
+                CustomMinimumSize = GlobalToggleSize,
+                TopLevel = true,
+                ZIndex = 92
+            };
+
+            toggle.Connect(
+                BaseButton.SignalName.Toggled,
+                Callable.From<bool>((pressed) =>
+                    LocalSelfCoopContext.SetAllWakuuEnabled(pressed, "char-select-global-wakuu-toggle")));
+            screen.AddChildSafely(toggle);
+        }
+
+        if (screen.GetNodeOrNull<Label>(GlobalWakuuLabelName) == null)
+        {
+            Label label = new()
+            {
+                Name = GlobalWakuuLabelName,
+                Text = "全瓦库",
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                TopLevel = true,
+                ZIndex = 92
+            };
+            label.AddThemeFontSizeOverride("font_size", 16);
+            label.AddThemeColorOverride("font_color", new Color("f3efe6"));
+            label.AddThemeColorOverride("font_outline_color", new Color("111111"));
+            label.AddThemeConstantOverride("outline_size", 4);
+            screen.AddChildSafely(label);
+        }
+    }
+
+    private static void RefreshGlobalWakuuToggle(NCharacterSelectScreen? screen)
+    {
+        if (screen == null || !GodotObject.IsInstanceValid(screen))
+        {
+            return;
+        }
+
+        EnsureGlobalWakuuToggle(screen);
+
+        CheckButton? toggle = screen.GetNodeOrNull<CheckButton>(GlobalWakuuToggleName);
+        Label? label = screen.GetNodeOrNull<Label>(GlobalWakuuLabelName);
+        if (toggle == null || label == null)
+        {
+            return;
+        }
+
+        List<NRemoteLobbyPlayer> localNodes = GetLocalLobbyNodes(screen);
+        bool shouldShow = LocalSelfCoopContext.IsEnabled && !RunManager.Instance.IsInProgress && localNodes.Count > 0;
+        toggle.Visible = shouldShow;
+        label.Visible = shouldShow;
+        if (!shouldShow)
+        {
+            return;
+        }
+
+        AnchorLayout firstLayout = ResolveAnchorLayout(screen, localNodes[0]);
+        float firstColumnMinY = float.MaxValue;
+        float firstColumnMaxBottom = float.MinValue;
+        foreach (NRemoteLobbyPlayer node in localNodes)
+        {
+            AnchorLayout layout = ResolveAnchorLayout(screen, node);
+            if (Mathf.Abs(layout.ColumnX - firstLayout.ColumnX) > 0.1f)
+            {
+                continue;
+            }
+
+            firstColumnMinY = Mathf.Min(firstColumnMinY, layout.AnchorRect.Position.Y);
+            firstColumnMaxBottom = Mathf.Max(firstColumnMaxBottom, layout.AnchorRect.Position.Y + Mathf.Max(layout.AnchorRect.Size.Y, SelectorButtonSize.Y));
+        }
+
+        if (firstColumnMinY == float.MaxValue)
+        {
+            firstColumnMinY = firstLayout.AnchorRect.Position.Y;
+            firstColumnMaxBottom = firstLayout.AnchorRect.Position.Y + SelectorButtonSize.Y;
+        }
+
+        toggle.GlobalPosition = new Vector2(firstLayout.ColumnX, firstColumnMaxBottom + 8f);
+        label.GlobalPosition = toggle.GlobalPosition + new Vector2(toggle.Size.X + 6f, 4f);
+
+        List<ulong> activeIds = LocalSelfCoopContext.LocalPlayerIds
+            .Take(LocalSelfCoopContext.DesiredLocalPlayerCount)
+            .ToList();
+        bool allEnabled = activeIds.Count > 0 && activeIds.All(LocalSelfCoopContext.IsWakuuEnabled);
+        toggle.SetPressedNoSignal(allEnabled);
     }
 
     private static void EnsureTracker(NRemoteLobbyPlayer playerNode)
@@ -175,17 +279,123 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         playerNode.AddChild(tracker);
     }
 
-    private static bool IsInsideCharacterSelect(Node node)
+    private static NCharacterSelectScreen? TryGetCharacterSelectScreen(Node node)
     {
         for (Node? current = node; current != null; current = current.GetParent())
         {
-            if (current is NCharacterSelectScreen)
+            if (current is NCharacterSelectScreen screen)
             {
-                return true;
+                return screen;
             }
         }
 
-        return false;
+        return null;
+    }
+
+    private static AnchorLayout ResolveAnchorLayout(NCharacterSelectScreen screen, NRemoteLobbyPlayer playerNode)
+    {
+        List<NRemoteLobbyPlayer> localNodes = GetLocalLobbyNodes(screen);
+        Rect2 currentAnchorRect = ResolveIdAnchorRect(playerNode);
+        if (localNodes.Count == 0)
+        {
+            return new AnchorLayout(currentAnchorRect, currentAnchorRect.Position.X + ColumnRightShift);
+        }
+
+        List<float> columns = BuildColumns(localNodes.Select((node) => node.GlobalPosition.X).ToList());
+        int columnIndex = ResolveColumnIndex(columns, playerNode.GlobalPosition.X);
+        float step = ResolveColumnStep(columns);
+
+        float minX = columns.Min();
+        float firstColumnX = localNodes
+            .Where((node) => Mathf.Abs(node.GlobalPosition.X - minX) <= ColumnMergeTolerance)
+            .Select((node) => ResolveIdAnchorRect(node).Position.X)
+            .DefaultIfEmpty(currentAnchorRect.Position.X)
+            .Min();
+
+        float columnX = firstColumnX + ColumnRightShift + columnIndex * step;
+        return new AnchorLayout(currentAnchorRect, columnX);
+    }
+
+    private static List<float> BuildColumns(List<float> values)
+    {
+        values.Sort();
+        List<float> columns = new();
+        foreach (float value in values)
+        {
+            if (columns.Count == 0)
+            {
+                columns.Add(value);
+                continue;
+            }
+
+            if (Mathf.Abs(columns[^1] - value) <= ColumnMergeTolerance)
+            {
+                columns[^1] = (columns[^1] + value) * 0.5f;
+            }
+            else
+            {
+                columns.Add(value);
+            }
+        }
+
+        return columns;
+    }
+
+    private static int ResolveColumnIndex(List<float> columns, float x)
+    {
+        if (columns.Count == 0)
+        {
+            return 0;
+        }
+
+        int bestIndex = 0;
+        float bestDistance = float.MaxValue;
+        for (int i = 0; i < columns.Count; i++)
+        {
+            float distance = Mathf.Abs(columns[i] - x);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestIndex = i;
+            }
+        }
+
+        return bestIndex;
+    }
+
+    private static float ResolveColumnStep(List<float> columns)
+    {
+        if (columns.Count <= 1)
+        {
+            return MinColumnGap;
+        }
+
+        List<float> gaps = new();
+        for (int i = 1; i < columns.Count; i++)
+        {
+            float gap = columns[i] - columns[i - 1];
+            if (gap > 1f)
+            {
+                gaps.Add(gap);
+            }
+        }
+
+        if (gaps.Count == 0)
+        {
+            return MinColumnGap;
+        }
+
+        return Mathf.Max(MinColumnGap, gaps.Average());
+    }
+
+    private static List<NRemoteLobbyPlayer> GetLocalLobbyNodes(NCharacterSelectScreen screen)
+    {
+        return EnumerateDescendants(screen)
+            .OfType<NRemoteLobbyPlayer>()
+            .Where((node) => LocalSelfCoopContext.LocalPlayerIds.Contains(node.PlayerId))
+            .OrderBy((node) => node.GlobalPosition.X)
+            .ThenBy((node) => node.GlobalPosition.Y)
+            .ToList();
     }
 
     private static Rect2 ResolveIdAnchorRect(NRemoteLobbyPlayer playerNode)
@@ -234,7 +444,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
                 continue;
             }
 
-            if (label.Name == WakuuHintName)
+            if (label.Name == WakuuHintName || label.Name == GlobalWakuuLabelName)
             {
                 continue;
             }
@@ -263,6 +473,8 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             }
         }
     }
+
+    private readonly record struct AnchorLayout(Rect2 AnchorRect, float ColumnX);
 }
 
 internal sealed partial class LocalRemoteLobbyPlayerSwitchTracker : Node

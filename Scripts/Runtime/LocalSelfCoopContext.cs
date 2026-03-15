@@ -128,6 +128,36 @@ internal static class LocalSelfCoopContext
         return true;
     }
 
+    public static bool SetAllWakuuEnabled(bool enabled, string source)
+    {
+        List<ulong> targetPlayerIds = _localPlayerIds
+            .Take(_desiredLocalPlayerCount)
+            .Where((id) => id != 0)
+            .ToList();
+        if (targetPlayerIds.Count == 0)
+        {
+            return false;
+        }
+
+        bool changed = false;
+        foreach (ulong playerId in targetPlayerIds)
+        {
+            changed |= enabled
+                ? _wakuuPlayerIds.Add(playerId)
+                : _wakuuPlayerIds.Remove(playerId);
+        }
+
+        if (!changed)
+        {
+            return false;
+        }
+
+        LocalMultiControlLogger.Info(
+            $"全体瓦库开关变更: enabled={enabled}, count={targetPlayerIds.Count}, source={source}");
+        MarkCurrentProfileTag();
+        return true;
+    }
+
     public static List<ulong> GetWakuuPlayerIdsSnapshot()
     {
         return _wakuuPlayerIds

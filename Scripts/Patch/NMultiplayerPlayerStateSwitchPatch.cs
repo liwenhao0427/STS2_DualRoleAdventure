@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
@@ -16,9 +18,6 @@ internal static class NMultiplayerPlayerStateReadyPatch
     [HarmonyPostfix]
     private static void Postfix(NMultiplayerPlayerState __instance)
     {
-        // 注意：不要再改成直接 Patch NMultiplayerPlayerState._Process。
-        // 该目标方法在线上版本曾解析失败并触发 Harmony 初始化异常，导致整包补丁加载不完整。
-        // 统一通过 Tracker 节点逐帧刷新，避免再次出现“无法开始游戏”的回归。
         LocalMultiplayerPlayerStateSwitchUi.Ensure(__instance);
     }
 }
@@ -28,6 +27,9 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
     private const string SwitchButtonName = "LocalSwitchPlayerButton";
     private const string RightClickMetaKey = "LocalSwitchPlayerRightClickBound";
     private const string TrackerName = "LocalSwitchPlayerTracker";
+
+    private static readonly Vector2 SmallButtonSize = new(34f, 16f);
+    private static readonly Vector2 FallbackOffset = new(248f, 8f);
 
     public static void Ensure(NMultiplayerPlayerState state)
     {
@@ -49,15 +51,17 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
         button.Visible = shouldShow;
         if (!shouldShow)
         {
+            RestoreOriginalIdLabel(state);
             return;
         }
 
         button.ButtonText = string.Empty;
+        Rect2 anchorRect = ResolveIdAnchorRect(state);
+        HideOriginalIdLabel(state);
 
-        // 注意：固定 X 轴对齐是用户明确要求，不能再按 Hitbox 宽度动态计算。
-        // 之前 state.Hitbox.Size.X 会因名称/状态变化而偏移，造成三行按钮参差不齐。
-        float fixedX = state.GetViewport().GetVisibleRect().Size.X * (362f / NGame.devResolution.X);
-        button.GlobalPosition = new Vector2(fixedX, state.GlobalPosition.Y + 8f);
+        button.Size = SmallButtonSize;
+        button.CustomMinimumSize = SmallButtonSize;
+        button.GlobalPosition = anchorRect.Position + new Vector2(2f, 0f);
     }
 
     private static void EnsureSwitchButton(NMultiplayerPlayerState state)
@@ -67,19 +71,21 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
             return;
         }
 
-        LocalSimpleTextButton button = new LocalSimpleTextButton
+        LocalSimpleTextButton button = new()
         {
             Name = SwitchButtonName,
             ButtonText = string.Empty,
             FocusMode = Control.FocusModeEnum.None,
-            FontSize = 18,
-            Size = new Vector2(68f, 32f),
-            CustomMinimumSize = new Vector2(68f, 32f),
-            ImageScale = Vector2.One * 1.5f,
+            FontSize = 16,
+            Size = SmallButtonSize,
+            CustomMinimumSize = SmallButtonSize,
+            ImageScale = Vector2.One * 0.75f,
             TopLevel = true,
             ZIndex = 100
         };
-        button.Connect(NClickableControl.SignalName.Released,
+
+        button.Connect(
+            NClickableControl.SignalName.Released,
             Callable.From<NClickableControl>((_) => TrySwitchToPlayer(state.Player, "player-state-button")));
         state.AddChildSafely(button);
     }
@@ -91,7 +97,7 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
             return;
         }
 
-        LocalPlayerStateSwitchTracker tracker = new LocalPlayerStateSwitchTracker
+        LocalPlayerStateSwitchTracker tracker = new()
         {
             Name = TrackerName
         };
@@ -132,6 +138,77 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
         }
 
         LocalControlSwitchGuard.TrySwitchTo(player.NetId, source);
+    }
+
+    private static Rect2 ResolveIdAnchorRect(NMultiplayerPlayerState state)
+    {
+        Label? idLabel = TryFindIdLabel(state);
+        if (idLabel != null)
+        {
+            Vector2 size = idLabel.Size;
+            if (size.X <= 2f)
+            {
+                size = new Vector2(78f, SmallButtonSize.Y);
+            }
+
+            return new Rect2(idLabel.GlobalPosition, size);
+        }
+
+        Vector2 fallbackPosition = state.GlobalPosition + FallbackOffset;
+        return new Rect2(fallbackPosition, new Vector2(78f, SmallButtonSize.Y));
+    }
+
+    private static void HideOriginalIdLabel(NMultiplayerPlayerState state)
+    {
+        Label? idLabel = TryFindIdLabel(state);
+        if (idLabel != null)
+        {
+            idLabel.Visible = false;
+        }
+    }
+
+    private static void RestoreOriginalIdLabel(NMultiplayerPlayerState state)
+    {
+        Label? idLabel = TryFindIdLabel(state);
+        if (idLabel != null)
+        {
+            idLabel.Visible = true;
+        }
+    }
+
+    private static Label? TryFindIdLabel(NMultiplayerPlayerState state)
+    {
+        string playerIdText = state.Player.NetId.ToString();
+        foreach (Node child in EnumerateDescendants(state))
+        {
+            if (child is not Label label)
+            {
+                continue;
+            }
+
+            string name = label.Name.ToString();
+            string text = label.Text ?? string.Empty;
+            bool nameLooksLikeId = name.Contains("id", StringComparison.OrdinalIgnoreCase);
+            bool textContainsPlayerId = text.Contains(playerIdText, StringComparison.Ordinal);
+            if (nameLooksLikeId || textContainsPlayerId)
+            {
+                return label;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<Node> EnumerateDescendants(Node root)
+    {
+        foreach (Node child in root.GetChildren())
+        {
+            yield return child;
+            foreach (Node nested in EnumerateDescendants(child))
+            {
+                yield return nested;
+            }
+        }
     }
 }
 
