@@ -21,9 +21,9 @@ namespace LocalMultiControl.Scripts.Runtime;
 internal static class LocalSelfCoopContext
 {
     private const int MinLocalPlayerCount = 2;
-    private const int MaxLocalPlayerCount = 4;
+    private const int MaxLocalPlayerCount = 16;
 
-    private static readonly List<ulong> _localPlayerIds = new() { 1, 2, 3, 4 };
+    private static readonly List<ulong> _localPlayerIds = new() { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
     private static readonly HashSet<ulong> _wakuuPlayerIds = new();
 
     private static int _desiredLocalPlayerCount = 2;

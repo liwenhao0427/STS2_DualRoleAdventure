@@ -10,6 +10,7 @@ internal static class LocalSelfCoopSaveTag
     private const string SaveTagFileName = "local_self_coop_mp.tag";
     private const string V2Prefix = "v2:";
     private const string V3Prefix = "v3:";
+    private const int MaxSupportedPlayerCount = 16;
 
     public static void MarkCurrentProfile(ulong primaryPlayerId, ulong secondaryPlayerId)
     {
@@ -25,7 +26,7 @@ internal static class LocalSelfCoopSaveTag
     {
         try
         {
-            List<ulong> normalizedPlayers = NormalizeIds(playerIds, maxCount: 4);
+            List<ulong> normalizedPlayers = NormalizeIds(playerIds, maxCount: MaxSupportedPlayerCount);
             if (normalizedPlayers.Count < 2)
             {
                 LocalMultiControlLogger.Warn("写入本地多控存档标记失败：有效玩家ID不足2个。");
@@ -33,7 +34,7 @@ internal static class LocalSelfCoopSaveTag
             }
 
             HashSet<ulong> allowed = normalizedPlayers.ToHashSet();
-            List<ulong> normalizedWakuuIds = NormalizeIds(wakuuPlayerIds, maxCount: 4)
+            List<ulong> normalizedWakuuIds = NormalizeIds(wakuuPlayerIds, maxCount: MaxSupportedPlayerCount)
                 .Where((playerId) => allowed.Contains(playerId))
                 .ToList();
 
@@ -121,7 +122,7 @@ internal static class LocalSelfCoopSaveTag
             if (content.StartsWith(V2Prefix, StringComparison.OrdinalIgnoreCase))
             {
                 string payload = content.Substring(V2Prefix.Length);
-                List<ulong> parsedV2 = NormalizeIds(payload.Split(','), maxCount: 4);
+                List<ulong> parsedV2 = NormalizeIds(payload.Split(','), maxCount: MaxSupportedPlayerCount);
                 if (parsedV2.Count < 2)
                 {
                     LocalMultiControlLogger.Warn($"本地多控存档标记格式无效: {content}");
@@ -133,7 +134,7 @@ internal static class LocalSelfCoopSaveTag
             }
 
             // 向后兼容旧双人格式: "id1,id2"
-            List<ulong> parsedLegacy = NormalizeIds(content.Split(','), maxCount: 4);
+            List<ulong> parsedLegacy = NormalizeIds(content.Split(','), maxCount: MaxSupportedPlayerCount);
             if (parsedLegacy.Count == 2)
             {
                 playerIds = parsedLegacy;
@@ -166,7 +167,7 @@ internal static class LocalSelfCoopSaveTag
             return false;
         }
 
-        playerIds = NormalizeIds(playersSection.Split(','), maxCount: 4);
+        playerIds = NormalizeIds(playersSection.Split(','), maxCount: MaxSupportedPlayerCount);
         if (playerIds.Count < 2)
         {
             return false;
@@ -175,7 +176,7 @@ internal static class LocalSelfCoopSaveTag
         if (sections.TryGetValue("wakuu", out string? wakuuSection))
         {
             HashSet<ulong> allowed = playerIds.ToHashSet();
-            wakuuPlayerIds = NormalizeIds(wakuuSection.Split(','), maxCount: 4)
+            wakuuPlayerIds = NormalizeIds(wakuuSection.Split(','), maxCount: MaxSupportedPlayerCount)
                 .Where((playerId) => allowed.Contains(playerId))
                 .ToList();
         }
