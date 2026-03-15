@@ -28,7 +28,7 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
     private const string RightClickMetaKey = "LocalSwitchPlayerRightClickBound";
     private const string TrackerName = "LocalSwitchPlayerTracker";
 
-    private static readonly Vector2 SmallButtonSize = new(34f, 16f);
+    private static readonly Vector2 SmallButtonSize = new(68f, 32f);
     private static readonly Vector2 FallbackOffset = new(248f, 8f);
 
     public static void Ensure(NMultiplayerPlayerState state)
@@ -76,10 +76,10 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
             Name = SwitchButtonName,
             ButtonText = string.Empty,
             FocusMode = Control.FocusModeEnum.None,
-            FontSize = 16,
+            FontSize = 18,
             Size = SmallButtonSize,
             CustomMinimumSize = SmallButtonSize,
-            ImageScale = Vector2.One * 0.75f,
+            ImageScale = Vector2.One * 1.5f,
             TopLevel = true,
             ZIndex = 100
         };
@@ -148,14 +148,14 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
             Vector2 size = idLabel.Size;
             if (size.X <= 2f)
             {
-                size = new Vector2(78f, SmallButtonSize.Y);
+                size = new Vector2(92f, SmallButtonSize.Y);
             }
 
             return new Rect2(idLabel.GlobalPosition, size);
         }
 
         Vector2 fallbackPosition = state.GlobalPosition + FallbackOffset;
-        return new Rect2(fallbackPosition, new Vector2(78f, SmallButtonSize.Y));
+        return new Rect2(fallbackPosition, new Vector2(92f, SmallButtonSize.Y));
     }
 
     private static void HideOriginalIdLabel(NMultiplayerPlayerState state)

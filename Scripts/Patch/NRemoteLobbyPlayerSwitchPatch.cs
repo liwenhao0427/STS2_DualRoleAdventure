@@ -38,6 +38,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
     private static readonly Vector2 WakuuToggleSize = new(30f, 28f);
     private static readonly Vector2 GlobalToggleSize = new(44f, 28f);
     private static readonly Vector2 AnchorFallbackOffset = new(128f, 3f);
+    private static readonly Vector2 GlobalToggleTopLeft = new(24f, 24f);
 
     public static void Ensure(NRemoteLobbyPlayer playerNode)
     {
@@ -232,29 +233,8 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             return;
         }
 
-        AnchorLayout firstLayout = ResolveAnchorLayout(screen, localNodes[0]);
-        float firstColumnMinY = float.MaxValue;
-        float firstColumnMaxBottom = float.MinValue;
-        foreach (NRemoteLobbyPlayer node in localNodes)
-        {
-            AnchorLayout layout = ResolveAnchorLayout(screen, node);
-            if (Mathf.Abs(layout.ColumnX - firstLayout.ColumnX) > 0.1f)
-            {
-                continue;
-            }
-
-            firstColumnMinY = Mathf.Min(firstColumnMinY, layout.AnchorRect.Position.Y);
-            firstColumnMaxBottom = Mathf.Max(firstColumnMaxBottom, layout.AnchorRect.Position.Y + Mathf.Max(layout.AnchorRect.Size.Y, SelectorButtonSize.Y));
-        }
-
-        if (firstColumnMinY == float.MaxValue)
-        {
-            firstColumnMinY = firstLayout.AnchorRect.Position.Y;
-            firstColumnMaxBottom = firstLayout.AnchorRect.Position.Y + SelectorButtonSize.Y;
-        }
-
-        toggle.GlobalPosition = new Vector2(firstLayout.ColumnX, firstColumnMaxBottom + 8f);
-        label.GlobalPosition = toggle.GlobalPosition + new Vector2(toggle.Size.X + 6f, 4f);
+        toggle.GlobalPosition = GlobalToggleTopLeft;
+        label.GlobalPosition = toggle.GlobalPosition + new Vector2(toggle.Size.X + 8f, 4f);
 
         List<ulong> activeIds = LocalSelfCoopContext.LocalPlayerIds
             .Take(LocalSelfCoopContext.DesiredLocalPlayerCount)

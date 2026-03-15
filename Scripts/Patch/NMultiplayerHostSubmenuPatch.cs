@@ -91,7 +91,7 @@ internal static class NMultiplayerHostSubmenuPatch
         Node? descriptionNode = button.FindChild("Description", recursive: true, owned: false);
         if (descriptionNode is RichTextLabel description)
         {
-            description.Text = "在本机创建2~16名可切换角色，进行本地协作。\n进入后可用 +/- 调整人数。";
+            description.Text = "在本机创建2~12名可切换角色，进行本地协作。\n进入后可用 +/- 调整人数。";
         }
     }
 
@@ -155,7 +155,7 @@ internal static class NMultiplayerHostSubmenuPatch
 
         NCharacterSelectScreen characterSelectScreen = stack.GetSubmenuType<NCharacterSelectScreen>();
         LocalSelfCoopContext.ActiveCharacterSelectScreen = characterSelectScreen;
-        // 以最大容量初始化大厅，实际活跃人数由 LocalSelfCoopContext 按目标人数裁剪到2~16。
+        // 以最大容量初始化大厅，实际活跃人数由 LocalSelfCoopContext 按目标人数裁剪到2~12。
         characterSelectScreen.InitializeMultiplayerAsHost(netService, LocalSelfCoopContext.LocalPlayerIds.Count);
         if (!LocalSelfCoopContext.BootstrapLocalPlayers(characterSelectScreen))
         {
@@ -163,7 +163,7 @@ internal static class NMultiplayerHostSubmenuPatch
         }
 
         stack.Push(characterSelectScreen);
-        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create("已进入本地多角色：按 +/- 调整人数（2~16）"));
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create("已进入本地多角色：按 +/- 调整人数（2~12）"));
         LocalMultiControlLogger.Info("已跳转到本地多角色队伍角色选择界面。");
     }
 
