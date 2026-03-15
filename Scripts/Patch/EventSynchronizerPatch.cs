@@ -7,6 +7,7 @@ using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
@@ -24,16 +25,19 @@ internal static class EventSynchronizerPatch
         internal bool IsPatched;
         internal ulong? PreviousContextNetId;
         internal ulong PreviousSenderId;
+        internal bool IsManualSelectionOption;
     }
 
     [HarmonyPrefix]
-    private static void Prefix(EventSynchronizer __instance, ref SenderState __state)
+    private static void Prefix(EventSynchronizer __instance, int index, ref SenderState __state)
     {
         __state = default;
         if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleEventFlow)
         {
             return;
         }
+
+        __state.IsManualSelectionOption = IsManualSelectionOption(__instance, index);
 
         if (Volatile.Read(ref _isBroadcastingLocalEventOption) != 0)
         {
@@ -64,7 +68,7 @@ internal static class EventSynchronizerPatch
     {
         try
         {
-            TryAutoProxyEventChoice(__instance, index);
+            TryAutoProxyEventChoice(__instance, index, __state);
         }
         finally
         {
@@ -81,7 +85,7 @@ internal static class EventSynchronizerPatch
         }
     }
 
-    private static void TryAutoProxyEventChoice(EventSynchronizer synchronizer, int index)
+    private static void TryAutoProxyEventChoice(EventSynchronizer synchronizer, int index, SenderState state)
     {
         if (!LocalSelfCoopContext.IsEnabled)
         {
@@ -95,6 +99,12 @@ internal static class EventSynchronizerPatch
                 if (ShouldSkipBroadcastForNeow(synchronizer))
                 {
                     LocalMultiControlLogger.Info("检测到涅奥事件，跳过普通事件广播，保持各角色独立开局选项。");
+                    return;
+                }
+
+                if (state.IsManualSelectionOption)
+                {
+                    LocalMultiControlLogger.Info("检测到需要手动选牌/选项的事件分支，跳过自动广播，改为切人后逐角色手动完成。");
                     return;
                 }
 
@@ -178,6 +188,44 @@ internal static class EventSynchronizerPatch
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"共享事件自动补票失败: {exception.Message}");
+        }
+    }
+
+    private static bool IsManualSelectionOption(EventSynchronizer synchronizer, int index)
+    {
+        try
+        {
+            EventModel localEvent = synchronizer.GetLocalEvent();
+            if (localEvent.CurrentOptions.Count == 0 || index < 0 || index >= localEvent.CurrentOptions.Count)
+            {
+                return false;
+            }
+
+            EventOption option = localEvent.CurrentOptions[index];
+            string textKey = option.TextKey ?? string.Empty;
+            string description = option.Description?.GetRawText() ?? string.Empty;
+
+            if (textKey.Contains("SCROLL_BOXES", StringComparison.OrdinalIgnoreCase) ||
+                textKey.Contains("DARK", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (description.Contains("选择", StringComparison.Ordinal) ||
+                description.Contains("移除", StringComparison.Ordinal) ||
+                description.Contains("变形", StringComparison.Ordinal) ||
+                description.Contains("升级一张", StringComparison.Ordinal) ||
+                description.Contains("select", StringComparison.OrdinalIgnoreCase) ||
+                description.Contains("remove", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
         }
     }
 
