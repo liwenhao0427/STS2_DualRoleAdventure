@@ -7,6 +7,7 @@ using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -91,6 +92,12 @@ internal static class EventSynchronizerPatch
         {
             if (LocalSelfCoopContext.UseSingleEventFlow)
             {
+                if (ShouldSkipBroadcastForNeow(synchronizer))
+                {
+                    LocalMultiControlLogger.Info("检测到涅奥事件，跳过普通事件广播，保持各角色独立开局选项。");
+                    return;
+                }
+
                 TryBroadcastNonSharedEventChoice(synchronizer, index);
                 return;
             }
@@ -171,6 +178,20 @@ internal static class EventSynchronizerPatch
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"共享事件自动补票失败: {exception.Message}");
+        }
+    }
+
+    private static bool ShouldSkipBroadcastForNeow(EventSynchronizer synchronizer)
+    {
+        try
+        {
+            EventModel localEvent = synchronizer.GetLocalEvent();
+            string eventId = localEvent.Id.Entry;
+            return string.Equals(eventId, "NEOW", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
         }
     }
 
