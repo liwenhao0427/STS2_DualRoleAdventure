@@ -177,43 +177,34 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
-        ulong? controlledPlayerId = Session.CurrentControlledPlayerId ?? LocalContext.NetId;
-        if (!controlledPlayerId.HasValue)
+        foreach (Player player in combatState.Players)
         {
-            return;
-        }
+            if (player.GetRelic<WhisperingEarring>() == null)
+            {
+                continue;
+            }
 
-        Player? controlledPlayer = combatState.GetPlayer(controlledPlayerId.Value);
-        if (controlledPlayer == null)
-        {
-            return;
-        }
+            if (CombatManager.Instance.IsPlayerReadyToEndTurn(player))
+            {
+                continue;
+            }
 
-        if (controlledPlayer.GetRelic<WhisperingEarring>() == null)
-        {
-            return;
-        }
+            bool hasPlayableCards = PileType.Hand.GetPile(player).Cards.Any((card) => card.CanPlay());
+            string key = $"{combatState.RoundNumber}:{player.NetId}";
+            if (hasPlayableCards)
+            {
+                _wakuuAutoEndIssued.Remove(key);
+                continue;
+            }
 
-        if (CombatManager.Instance.IsPlayerReadyToEndTurn(controlledPlayer))
-        {
-            return;
-        }
+            if (!_wakuuAutoEndIssued.Add(key))
+            {
+                continue;
+            }
 
-        bool hasPlayableCards = PileType.Hand.GetPile(controlledPlayer).Cards.Any((card) => card.CanPlay());
-        string key = $"{combatState.RoundNumber}:{controlledPlayer.NetId}";
-        if (hasPlayableCards)
-        {
-            _wakuuAutoEndIssued.Remove(key);
-            return;
+            LocalMultiControlLogger.Info($"瓦库遗物检测到无牌可出，自动结束回合: player={player.NetId}, round={combatState.RoundNumber}");
+            MegaCrit.Sts2.Core.Commands.PlayerCmd.EndTurn(player, canBackOut: false);
         }
-
-        if (!_wakuuAutoEndIssued.Add(key))
-        {
-            return;
-        }
-
-        LocalMultiControlLogger.Info($"瓦库遗物检测到无牌可出，自动结束回合: player={controlledPlayer.NetId}, round={combatState.RoundNumber}");
-        MegaCrit.Sts2.Core.Commands.PlayerCmd.EndTurn(controlledPlayer, canBackOut: false);
     }
 
     private static async Task GrantWakuuRelicsAsync(RunState runState)

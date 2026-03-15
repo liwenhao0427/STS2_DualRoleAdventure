@@ -21,11 +21,13 @@ internal static class NRemoteLobbyPlayerReadyPatch
 internal static class LocalRemoteLobbyPlayerSwitchUi
 {
     private const string ButtonName = "LocalLobbyPlayerSwitchButton";
+    private const string WakuuToggleName = "LocalLobbyPlayerWakuuToggle";
     private const string TrackerName = "LocalLobbyPlayerSwitchTracker";
 
     public static void Ensure(NRemoteLobbyPlayer playerNode)
     {
         EnsureButton(playerNode);
+        EnsureWakuuToggle(playerNode);
         EnsureTracker(playerNode);
         Refresh(playerNode);
     }
@@ -33,7 +35,8 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
     public static void Refresh(NRemoteLobbyPlayer playerNode)
     {
         LocalSimpleTextButton? button = playerNode.GetNodeOrNull<LocalSimpleTextButton>(ButtonName);
-        if (button == null)
+        CheckButton? wakuuToggle = playerNode.GetNodeOrNull<CheckButton>(WakuuToggleName);
+        if (button == null || wakuuToggle == null)
         {
             return;
         }
@@ -44,6 +47,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
                           && inCharacterSelect
                           && LocalSelfCoopContext.LocalPlayerIds.Contains(playerNode.PlayerId);
         button.Visible = shouldShow;
+        wakuuToggle.Visible = shouldShow;
         if (!shouldShow)
         {
             return;
@@ -51,9 +55,13 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
 
         button.ButtonText = string.Empty;
 
-        // 右移固定轴，避免覆盖左侧玩家信息。
+        // 右侧固定偏移，避免覆盖左侧玩家信息。
         float fixedX = playerNode.GlobalPosition.X + playerNode.Size.X + 72f;
         button.GlobalPosition = new Vector2(fixedX, playerNode.GlobalPosition.Y + 2f);
+
+        bool wakuuEnabled = LocalSelfCoopContext.IsWakuuEnabled(playerNode.PlayerId);
+        wakuuToggle.SetPressedNoSignal(wakuuEnabled);
+        wakuuToggle.GlobalPosition = button.GlobalPosition + new Vector2(button.Size.X + 10f, -1f);
     }
 
     private static void EnsureButton(NRemoteLobbyPlayer playerNode)
@@ -80,6 +88,31 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             Callable.From<MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl>((_) =>
                 LocalSelfCoopContext.SetLobbyEditingPlayer(playerNode.PlayerId, "char-select-avatar-button")));
         playerNode.AddChildSafely(button);
+    }
+
+    private static void EnsureWakuuToggle(NRemoteLobbyPlayer playerNode)
+    {
+        if (playerNode.GetNodeOrNull<CheckButton>(WakuuToggleName) != null)
+        {
+            return;
+        }
+
+        CheckButton toggle = new CheckButton
+        {
+            Name = WakuuToggleName,
+            Text = string.Empty,
+            FocusMode = Control.FocusModeEnum.None,
+            MouseFilter = Control.MouseFilterEnum.Stop,
+            Size = new Vector2(38f, 34f),
+            CustomMinimumSize = new Vector2(38f, 34f),
+            TopLevel = true,
+            ZIndex = 90
+        };
+        toggle.Connect(
+            BaseButton.SignalName.Toggled,
+            Callable.From<bool>((pressed) =>
+                LocalSelfCoopContext.SetWakuuEnabled(playerNode.PlayerId, pressed, "char-select-left-list-toggle")));
+        playerNode.AddChildSafely(toggle);
     }
 
     private static void EnsureTracker(NRemoteLobbyPlayer playerNode)
