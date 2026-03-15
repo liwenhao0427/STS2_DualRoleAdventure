@@ -19,6 +19,8 @@ using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.Core.Nodes.Screens;
+using MegaCrit.Sts2.Core.Nodes.Screens.Capstones;
 using MegaCrit.Sts2.Core.Nodes.TopBar;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Models;
@@ -395,6 +397,7 @@ internal static class LocalMultiControlRuntime
         }
 
         RefreshTopBarForControlledPlayer(currentControlledPlayerId.Value);
+        RefreshDeckViewForControlledPlayer(currentControlledPlayerId.Value);
         RefreshRestSiteForControlledPlayer(currentControlledPlayerId.Value);
         RefreshEventRoomForControlledPlayer(currentControlledPlayerId.Value);
         LocalMerchantInventoryRuntime.RefreshShopRoomForPlayer(currentControlledPlayerId.Value);
@@ -774,6 +777,54 @@ internal static class LocalMultiControlRuntime
         }
 
         deckButton.Initialize(player);
+    }
+
+    private static void RefreshDeckViewForControlledPlayer(ulong playerId)
+    {
+        NDeckViewScreen? deckView = NCapstoneContainer.Instance?.CurrentCapstoneScreen as NDeckViewScreen;
+        if (deckView == null)
+        {
+            return;
+        }
+
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
+        Player? player = runState?.GetPlayer(playerId);
+        if (player == null)
+        {
+            return;
+        }
+
+        try
+        {
+            CardPile? oldPile = AccessTools.Field(typeof(NDeckViewScreen), "_pile")?.GetValue(deckView) as CardPile;
+            MethodInfo? onPileContentsChangedMethod = AccessTools.Method(typeof(NDeckViewScreen), "OnPileContentsChanged");
+            if (oldPile != null && onPileContentsChangedMethod != null)
+            {
+                Action handler = (Action)Delegate.CreateDelegate(typeof(Action), deckView, onPileContentsChangedMethod);
+                oldPile.ContentsChanged -= handler;
+            }
+
+            CardPile newPile = PileType.Deck.GetPile(player);
+            AccessTools.Field(typeof(NDeckViewScreen), "_player")?.SetValue(deckView, player);
+            AccessTools.Field(typeof(NDeckViewScreen), "_pile")?.SetValue(deckView, newPile);
+
+            if (onPileContentsChangedMethod != null)
+            {
+                Action handler = (Action)Delegate.CreateDelegate(typeof(Action), deckView, onPileContentsChangedMethod);
+                newPile.ContentsChanged += handler;
+                onPileContentsChangedMethod.Invoke(deckView, Array.Empty<object>());
+            }
+            else
+            {
+                AccessTools.Method(typeof(NDeckViewScreen), "DisplayCards")?.Invoke(deckView, Array.Empty<object>());
+            }
+
+            LocalMultiControlLogger.Info($"卡组界面已切换到当前角色: {playerId}");
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"刷新卡组界面失败: {exception.Message}");
+        }
     }
 
     private static void RefreshRestSiteForControlledPlayer(ulong playerId)

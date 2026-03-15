@@ -77,7 +77,7 @@ internal static class LocalCombatSwitchButtons
     private const string NextButtonName = "LocalCombatSwitchNextButton";
     private const string TrackerName = "LocalCombatSwitchTracker";
     private static readonly Vector2 PingShowPosRatio = new Vector2(1536f, 932f) / NGame.devResolution;
-    private static readonly Vector2 EndTurnAnchorOffset = new Vector2(-28f, -42f);
+    private static readonly Vector2 EndTurnAnchorOffset = new Vector2(8f, -42f);
 
     public static void Ensure(NCombatUi combatUi)
     {
