@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Patch;
 using MegaCrit.Sts2.Core.Combat;
@@ -20,8 +21,10 @@ using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.TopBar;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves;
 using Godot;
 
 namespace LocalMultiControl.Scripts.Runtime;
@@ -31,6 +34,7 @@ internal static class LocalMultiControlRuntime
     private static readonly LocalMultiSessionState Session = new LocalMultiSessionState();
 
     private static readonly HashSet<string> _fieldSyncFailures = new HashSet<string>();
+    private static readonly HashSet<string> _wakuuAutoEndIssued = new HashSet<string>();
 
     public static LocalMultiSessionState SessionState => Session;
 
@@ -52,11 +56,14 @@ internal static class LocalMultiControlRuntime
         {
             LocalMultiControlLogger.Info("当前运行未启用本地多控会话。");
         }
+
+        TaskHelper.RunSafely(GrantWakuuRelicsAsync(runState));
     }
 
     public static void OnRunCleanup()
     {
         Session.Reset("RunManager.CleanUp");
+        _wakuuAutoEndIssued.Clear();
         LocalMerchantInventoryRuntime.Clear();
         LocalSelfCoopContext.Disable("RunManager.CleanUp");
         LocalMultiControlLogger.Info("RunManager.CleanUp 后已完成本地多控会话清理。");
@@ -138,6 +145,110 @@ internal static class LocalMultiControlRuntime
         }
 
         SwitchNextControlledPlayer(source);
+    }
+
+    public static void TryAutoEndTurnForRelicControlledPlayer()
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !RunManager.Instance.IsInProgress || !CombatManager.Instance.IsInProgress)
+        {
+            return;
+        }
+
+        NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+        if (combatUi == null)
+        {
+            return;
+        }
+
+        NPlayerHand hand = combatUi.Hand;
+        if (hand.InCardPlay || hand.IsInCardSelection || (NTargetManager.Instance?.IsInSelection ?? false))
+        {
+            return;
+        }
+
+        CombatState? combatState = TryGetCombatState(combatUi);
+        if (combatState == null || combatState.CurrentSide != CombatSide.Player)
+        {
+            return;
+        }
+
+        if (RunManager.Instance.ActionQueueSynchronizer.CombatState != ActionSynchronizerCombatState.PlayPhase)
+        {
+            return;
+        }
+
+        ulong? controlledPlayerId = Session.CurrentControlledPlayerId ?? LocalContext.NetId;
+        if (!controlledPlayerId.HasValue)
+        {
+            return;
+        }
+
+        Player? controlledPlayer = combatState.GetPlayer(controlledPlayerId.Value);
+        if (controlledPlayer == null)
+        {
+            return;
+        }
+
+        if (controlledPlayer.GetRelic<WhisperingEarring>() == null)
+        {
+            return;
+        }
+
+        if (CombatManager.Instance.IsPlayerReadyToEndTurn(controlledPlayer))
+        {
+            return;
+        }
+
+        bool hasPlayableCards = PileType.Hand.GetPile(controlledPlayer).Cards.Any((card) => card.CanPlay());
+        string key = $"{combatState.RoundNumber}:{controlledPlayer.NetId}";
+        if (hasPlayableCards)
+        {
+            _wakuuAutoEndIssued.Remove(key);
+            return;
+        }
+
+        if (!_wakuuAutoEndIssued.Add(key))
+        {
+            return;
+        }
+
+        LocalMultiControlLogger.Info($"瓦库遗物检测到无牌可出，自动结束回合: player={controlledPlayer.NetId}, round={combatState.RoundNumber}");
+        MegaCrit.Sts2.Core.Commands.PlayerCmd.EndTurn(controlledPlayer, canBackOut: false);
+    }
+
+    private static async Task GrantWakuuRelicsAsync(RunState runState)
+    {
+        if (!LocalSelfCoopContext.IsEnabled)
+        {
+            return;
+        }
+
+        List<ulong> wakuuPlayerIds = LocalSelfCoopContext.GetWakuuPlayerIdsSnapshot();
+        if (wakuuPlayerIds.Count == 0)
+        {
+            return;
+        }
+
+        foreach (ulong playerId in wakuuPlayerIds)
+        {
+            Player? player = runState.GetPlayer(playerId);
+            if (player == null)
+            {
+                continue;
+            }
+
+            if (player.GetRelic<WhisperingEarring>() != null)
+            {
+                continue;
+            }
+
+            RelicModel relic = ModelDb.Relic<WhisperingEarring>().ToMutable();
+            relic.FloorAddedToDeck = Math.Max(1, runState.TotalFloor);
+            player.AddRelicInternal(relic);
+            SaveManager.Instance.MarkRelicAsSeen(relic);
+            await relic.AfterObtained();
+            LocalMultiControlLogger.Info($"已为瓦库角色自动发放低语耳环: player={playerId}");
+        }
     }
 
     private static void ApplyControlContext(string source)

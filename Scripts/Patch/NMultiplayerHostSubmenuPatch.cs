@@ -148,6 +148,7 @@ internal static class NMultiplayerHostSubmenuPatch
         }
 
         ulong primaryPlayerId = LocalSelfCoopContext.ResolvePrimaryPlayerId();
+        LocalSelfCoopContext.UseSavedWakuuPlayerIds(Array.Empty<ulong>());
         LocalSelfCoopSaveTag.MarkCurrentProfile(LocalSelfCoopContext.LocalPlayerIds.Take(LocalSelfCoopContext.DesiredLocalPlayerCount).ToList());
         LocalLoopbackHostGameService netService = new LocalLoopbackHostGameService(primaryPlayerId);
         LocalSelfCoopContext.Enable(netService);
