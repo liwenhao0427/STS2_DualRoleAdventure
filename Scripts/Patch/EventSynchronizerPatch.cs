@@ -34,6 +34,16 @@ internal static class EventSynchronizerPatch
             return;
         }
 
+        if (Volatile.Read(ref _isBroadcastingLocalEventOption) != 0)
+        {
+            return;
+        }
+
+        if (!__instance.IsShared)
+        {
+            return;
+        }
+
         INetGameService? netService = AccessTools.Field(typeof(EventSynchronizer), "_netService")?.GetValue(__instance) as INetGameService;
         if (netService is not LocalLoopbackHostGameService loopbackService)
         {
