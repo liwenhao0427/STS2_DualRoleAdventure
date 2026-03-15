@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
@@ -15,6 +16,7 @@ namespace LocalMultiControl.Scripts.Patch;
 internal static class EventSynchronizerPatch
 {
     private static bool _isChoosingSharedEventOption;
+    private static int _isBroadcastingLocalEventOption;
 
     private struct SenderState
     {
@@ -77,6 +79,12 @@ internal static class EventSynchronizerPatch
 
         if (!synchronizer.IsShared)
         {
+            if (LocalSelfCoopContext.UseSingleEventFlow)
+            {
+                TryBroadcastNonSharedEventChoice(synchronizer, index);
+                return;
+            }
+
             if (!LocalSelfCoopContext.UseSingleEventFlow)
             {
                 ulong currentPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId ?? 0;
@@ -153,6 +161,70 @@ internal static class EventSynchronizerPatch
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"共享事件自动补票失败: {exception.Message}");
+        }
+    }
+
+    private static void TryBroadcastNonSharedEventChoice(EventSynchronizer synchronizer, int index)
+    {
+        if (Volatile.Read(ref _isBroadcastingLocalEventOption) != 0)
+        {
+            return;
+        }
+
+        INetGameService? netService = AccessTools.Field(typeof(EventSynchronizer), "_netService")?.GetValue(synchronizer) as INetGameService;
+        if (netService is not LocalLoopbackHostGameService loopbackService)
+        {
+            return;
+        }
+
+        IPlayerCollection? playerCollection = AccessTools.Field(typeof(EventSynchronizer), "_playerCollection")?.GetValue(synchronizer) as IPlayerCollection;
+        if (playerCollection == null || playerCollection.Players.Count <= 1)
+        {
+            return;
+        }
+
+        ulong sourcePlayerId = LocalContext.NetId
+            ?? LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId
+            ?? LocalSelfCoopContext.PrimaryPlayerId;
+        List<Player> targetPlayers = playerCollection.Players
+            .Where((player) => player.NetId != sourcePlayerId)
+            .ToList();
+        if (targetPlayers.Count == 0)
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _isBroadcastingLocalEventOption, 1, 0) != 0)
+        {
+            return;
+        }
+
+        ulong? previousContextNetId = LocalContext.NetId;
+        ulong previousSenderId = loopbackService.NetId;
+        try
+        {
+            foreach (Player targetPlayer in targetPlayers)
+            {
+                try
+                {
+                    LocalContext.NetId = targetPlayer.NetId;
+                    loopbackService.SetCurrentSenderId(targetPlayer.NetId);
+                    synchronizer.ChooseLocalOption(index);
+                    LocalMultiControlLogger.Info(
+                        $"普通事件选项已广播到本地角色: source={sourcePlayerId}, target={targetPlayer.NetId}, option={index}");
+                }
+                catch (Exception exception)
+                {
+                    LocalMultiControlLogger.Warn(
+                        $"普通事件选项广播失败: source={sourcePlayerId}, target={targetPlayer.NetId}, option={index}, error={exception.Message}");
+                }
+            }
+        }
+        finally
+        {
+            loopbackService.SetCurrentSenderId(previousSenderId);
+            LocalContext.NetId = previousContextNetId;
+            Volatile.Write(ref _isBroadcastingLocalEventOption, 0);
         }
     }
 
