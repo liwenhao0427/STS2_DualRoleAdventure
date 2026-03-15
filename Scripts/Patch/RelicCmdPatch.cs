@@ -16,10 +16,16 @@ namespace LocalMultiControl.Scripts.Patch;
 internal static class RelicCmdObtainPatch
 {
     private static readonly HashSet<RelicModel> NonSharedTreasureRelics = new(ReferenceEqualityComparer.Instance);
+    private static readonly HashSet<RelicModel> NonSharedChainRelics = new(ReferenceEqualityComparer.Instance);
 
     internal static bool TryConsumeNonSharedTreasureRelic(RelicModel relic)
     {
         return NonSharedTreasureRelics.Remove(relic);
+    }
+
+    internal static bool TryConsumeNonSharedChainRelic(RelicModel relic)
+    {
+        return NonSharedChainRelics.Remove(relic);
     }
 
     [HarmonyPrefix]
@@ -65,9 +71,11 @@ internal static class RelicCmdObtainPatch
             return obtainedRelic;
         }
 
-        if (player.RunState.CurrentRoom is EventRoom)
+        bool skipChainMirror = ShouldSkipChainMirror(obtainedRelic);
+        if (skipChainMirror)
         {
-            LocalMultiControlLogger.Info($"事件遗物按独立策略处理，不做共享镜像: relic={obtainedRelic.Id.Entry}, owner={player.NetId}");
+            NonSharedChainRelics.Add(obtainedRelic);
+            LocalMultiControlLogger.Info($"链式遗物按特判处理，不做共享镜像: relic={obtainedRelic.Id.Entry}, owner={player.NetId}");
             return obtainedRelic;
         }
 
@@ -93,6 +101,17 @@ internal static class RelicCmdObtainPatch
 
         return obtainedRelic;
     }
+
+    private static bool ShouldSkipChainMirror(RelicModel relic)
+    {
+        if (relic.IsWax)
+        {
+            return true;
+        }
+
+        string relicId = relic.Id.Entry;
+        return relicId == "LARGE_CAPSULE" || relicId == "TOY_BOX";
+    }
 }
 
 [HarmonyPatch(typeof(RelicCmd), nameof(RelicCmd.Remove))]
@@ -112,6 +131,11 @@ internal static class RelicCmdRemovePatch
             return;
         }
 
+        if (RelicCmdObtainPatch.TryConsumeNonSharedChainRelic(removedRelic))
+        {
+            return;
+        }
+
         if (!LocalSelfCoopContext.IsEnabled || removedRelic.Owner?.RunState == null)
         {
             return;
@@ -120,12 +144,6 @@ internal static class RelicCmdRemovePatch
         IRunState runState = removedRelic.Owner.RunState;
         if (runState.Players.Count <= 1)
         {
-            return;
-        }
-
-        if (runState.CurrentRoom is EventRoom)
-        {
-            LocalMultiControlLogger.Info($"事件遗物移除按独立策略处理，不做共享镜像: relic={removedRelic.Id.Entry}, owner={removedRelic.Owner.NetId}");
             return;
         }
 
