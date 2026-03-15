@@ -209,6 +209,8 @@ internal static class EventSynchronizerPatch
             return;
         }
 
+        System.Reflection.FieldInfo? localPlayerIdField = AccessTools.Field(typeof(EventSynchronizer), "_localPlayerId");
+        object? previousLocalPlayerIdValue = localPlayerIdField?.GetValue(synchronizer);
         ulong? previousContextNetId = LocalContext.NetId;
         ulong previousSenderId = loopbackService.NetId;
         try
@@ -217,6 +219,7 @@ internal static class EventSynchronizerPatch
             {
                 try
                 {
+                    localPlayerIdField?.SetValue(synchronizer, targetPlayer.NetId);
                     LocalContext.NetId = targetPlayer.NetId;
                     loopbackService.SetCurrentSenderId(targetPlayer.NetId);
                     synchronizer.ChooseLocalOption(index);
@@ -232,6 +235,11 @@ internal static class EventSynchronizerPatch
         }
         finally
         {
+            if (localPlayerIdField != null)
+            {
+                localPlayerIdField.SetValue(synchronizer, previousLocalPlayerIdValue);
+            }
+
             loopbackService.SetCurrentSenderId(previousSenderId);
             LocalContext.NetId = previousContextNetId;
             Volatile.Write(ref _isBroadcastingLocalEventOption, 0);
