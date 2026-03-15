@@ -36,8 +36,6 @@ internal static class LocalMultiControlRuntime
 
     private static readonly HashSet<string> _fieldSyncFailures = new HashSet<string>();
     private static readonly HashSet<string> _wakuuAutoEndIssued = new HashSet<string>();
-    private static long _allNoPlayableSinceMs = -1L;
-    private static int _allNoPlayableRound = -1;
     private static readonly HashSet<int> _allPlayersAutoEndedRounds = new HashSet<int>();
     private static int _lastAutoEndCombatIdentity = -1;
 
@@ -69,8 +67,6 @@ internal static class LocalMultiControlRuntime
     {
         Session.Reset("RunManager.CleanUp");
         _wakuuAutoEndIssued.Clear();
-        _allNoPlayableSinceMs = -1L;
-        _allNoPlayableRound = -1;
         _allPlayersAutoEndedRounds.Clear();
         _lastAutoEndCombatIdentity = -1;
         LocalMerchantInventoryRuntime.Clear();
@@ -188,7 +184,6 @@ internal static class LocalMultiControlRuntime
 
         RefreshAutoEndTrackingForCombat(combatState);
 
-        bool anyPlayerHasPlayableCards = false;
         bool anyWakuuPlayerHasPlayableCards = false;
         foreach (Player player in combatState.Players)
         {
@@ -198,11 +193,6 @@ internal static class LocalMultiControlRuntime
             }
 
             bool hasPlayableCards = PileType.Hand.GetPile(player).Cards.Any((card) => card.CanPlay());
-            if (hasPlayableCards)
-            {
-                anyPlayerHasPlayableCards = true;
-                _wakuuAutoEndIssued.Remove($"{_lastAutoEndCombatIdentity}:{combatState.RoundNumber}:{player.NetId}");
-            }
 
             if (player.GetRelic<WhisperingEarring>() != null && hasPlayableCards)
             {
@@ -213,38 +203,58 @@ internal static class LocalMultiControlRuntime
 
         if (anyWakuuPlayerHasPlayableCards)
         {
-            _allNoPlayableSinceMs = -1L;
-            _allNoPlayableRound = -1;
             _allPlayersAutoEndedRounds.Remove(combatState.RoundNumber);
         }
+    }
 
-        if (anyPlayerHasPlayableCards)
+    public static void TryManualEndTurnAutoCloseAllPlayers()
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !RunManager.Instance.IsInProgress || !CombatManager.Instance.IsInProgress)
         {
             return;
         }
 
-        if (TryEndAllPlayersWhenNoCards(combatState, "all-no-playable-immediate"))
-        {
-            _allNoPlayableSinceMs = -1L;
-            _allNoPlayableRound = -1;
-            return;
-        }
-
-        long nowMs = (long)Time.GetTicksMsec();
-        if (_allNoPlayableRound != combatState.RoundNumber)
-        {
-            _allNoPlayableRound = combatState.RoundNumber;
-            _allNoPlayableSinceMs = nowMs;
-            return;
-        }
-
-        if (_allNoPlayableSinceMs <= 0 || nowMs - _allNoPlayableSinceMs < 1000L)
+        NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+        if (combatUi == null)
         {
             return;
         }
 
-        _allNoPlayableSinceMs = nowMs;
-        TryEndAllPlayersWhenNoCards(combatState, "all-no-playable-delayed");
+        NPlayerHand hand = combatUi.Hand;
+        if (hand.InCardPlay || hand.IsInCardSelection || (NTargetManager.Instance?.IsInSelection ?? false))
+        {
+            return;
+        }
+
+        CombatState? combatState = TryGetCombatState(combatUi);
+        if (combatState == null || combatState.CurrentSide != CombatSide.Player)
+        {
+            return;
+        }
+
+        if (RunManager.Instance.ActionQueueSynchronizer.CombatState != ActionSynchronizerCombatState.PlayPhase)
+        {
+            return;
+        }
+
+        RefreshAutoEndTrackingForCombat(combatState);
+
+        foreach (Player player in combatState.Players)
+        {
+            if (player?.Creature == null || !player.Creature.IsAlive)
+            {
+                continue;
+            }
+
+            bool hasPlayableCards = PileType.Hand.GetPile(player).Cards.Any((card) => card.CanPlay());
+            if (hasPlayableCards)
+            {
+                LocalMultiControlLogger.Info($"玩家主动结束回合时检测到仍有可出牌角色，不触发全员结束: round={combatState.RoundNumber}");
+                return;
+            }
+        }
+
+        TryEndAllPlayersWhenNoCards(combatState, "manual-end-turn");
     }
 
     private static bool TryEndAllPlayersWhenNoCards(CombatState combatState, string source)
@@ -296,8 +306,6 @@ internal static class LocalMultiControlRuntime
 
         _lastAutoEndCombatIdentity = combatIdentity;
         _wakuuAutoEndIssued.Clear();
-        _allNoPlayableSinceMs = -1L;
-        _allNoPlayableRound = -1;
         _allPlayersAutoEndedRounds.Clear();
         LocalMultiControlLogger.Info($"检测到战斗场次切换，重置瓦库自动结束回合状态: combat={combatIdentity}");
     }

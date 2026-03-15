@@ -24,6 +24,8 @@ internal static class NEndTurnButtonPatch
             return true;
         }
 
+        LocalMultiControlRuntime.TryManualEndTurnAutoCloseAllPlayers();
+
         Player? me = LocalContext.GetMe(combatState);
         if (me != null && CombatManager.Instance.IsPlayerReadyToEndTurn(me))
         {
