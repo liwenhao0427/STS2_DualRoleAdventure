@@ -35,6 +35,9 @@ internal static class LocalMultiControlRuntime
 
     private static readonly HashSet<string> _fieldSyncFailures = new HashSet<string>();
     private static readonly HashSet<string> _wakuuAutoEndIssued = new HashSet<string>();
+    private static long _allNoPlayableSinceMs = -1L;
+    private static int _allNoPlayableRound = -1;
+    private static readonly HashSet<int> _allPlayersAutoEndedRounds = new HashSet<int>();
 
     public static LocalMultiSessionState SessionState => Session;
 
@@ -64,6 +67,9 @@ internal static class LocalMultiControlRuntime
     {
         Session.Reset("RunManager.CleanUp");
         _wakuuAutoEndIssued.Clear();
+        _allNoPlayableSinceMs = -1L;
+        _allNoPlayableRound = -1;
+        _allPlayersAutoEndedRounds.Clear();
         LocalMerchantInventoryRuntime.Clear();
         LocalSelfCoopContext.Disable("RunManager.CleanUp");
         LocalMultiControlLogger.Info("RunManager.CleanUp 后已完成本地多控会话清理。");
@@ -177,9 +183,76 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
+        bool anyPlayerHasPlayableCards = false;
+        bool anyWakuuPlayerHasPlayableCards = false;
         foreach (Player player in combatState.Players)
         {
-            if (player.GetRelic<WhisperingEarring>() == null)
+            if (player?.Creature == null || !player.Creature.IsAlive)
+            {
+                continue;
+            }
+
+            bool hasPlayableCards = PileType.Hand.GetPile(player).Cards.Any((card) => card.CanPlay());
+            if (hasPlayableCards)
+            {
+                anyPlayerHasPlayableCards = true;
+                _wakuuAutoEndIssued.Remove($"{combatState.RoundNumber}:{player.NetId}");
+            }
+
+            if (player.GetRelic<WhisperingEarring>() != null && hasPlayableCards)
+            {
+                anyWakuuPlayerHasPlayableCards = true;
+                LocalWakuuRelicRuntime.TryScheduleWatchdog(player, "combat-watchdog");
+            }
+        }
+
+        if (anyWakuuPlayerHasPlayableCards)
+        {
+            _allNoPlayableSinceMs = -1L;
+            _allNoPlayableRound = -1;
+            _allPlayersAutoEndedRounds.Remove(combatState.RoundNumber);
+        }
+
+        if (anyPlayerHasPlayableCards)
+        {
+            return;
+        }
+
+        if (TryEndAllPlayersWhenNoCards(combatState, "all-no-playable-immediate"))
+        {
+            _allNoPlayableSinceMs = -1L;
+            _allNoPlayableRound = -1;
+            return;
+        }
+
+        long nowMs = (long)Time.GetTicksMsec();
+        if (_allNoPlayableRound != combatState.RoundNumber)
+        {
+            _allNoPlayableRound = combatState.RoundNumber;
+            _allNoPlayableSinceMs = nowMs;
+            return;
+        }
+
+        if (_allNoPlayableSinceMs <= 0 || nowMs - _allNoPlayableSinceMs < 1000L)
+        {
+            return;
+        }
+
+        _allNoPlayableSinceMs = nowMs;
+        TryEndAllPlayersWhenNoCards(combatState, "all-no-playable-delayed");
+    }
+
+    private static bool TryEndAllPlayersWhenNoCards(CombatState combatState, string source)
+    {
+        if (_allPlayersAutoEndedRounds.Contains(combatState.RoundNumber))
+        {
+            return false;
+        }
+
+        bool endedAnyPlayer = false;
+        foreach (Player player in combatState.Players)
+        {
+            if (player?.Creature == null || !player.Creature.IsAlive)
             {
                 continue;
             }
@@ -189,22 +262,23 @@ internal static class LocalMultiControlRuntime
                 continue;
             }
 
-            bool hasPlayableCards = PileType.Hand.GetPile(player).Cards.Any((card) => card.CanPlay());
             string key = $"{combatState.RoundNumber}:{player.NetId}";
-            if (hasPlayableCards)
-            {
-                _wakuuAutoEndIssued.Remove(key);
-                continue;
-            }
-
             if (!_wakuuAutoEndIssued.Add(key))
             {
                 continue;
             }
 
-            LocalMultiControlLogger.Info($"瓦库遗物检测到无牌可出，自动结束回合: player={player.NetId}, round={combatState.RoundNumber}");
             MegaCrit.Sts2.Core.Commands.PlayerCmd.EndTurn(player, canBackOut: false);
+            endedAnyPlayer = true;
         }
+
+        if (endedAnyPlayer)
+        {
+            _allPlayersAutoEndedRounds.Add(combatState.RoundNumber);
+            LocalMultiControlLogger.Info($"检测到全员无牌可出，已自动结束全部角色回合: round={combatState.RoundNumber}, source={source}");
+        }
+
+        return endedAnyPlayer;
     }
 
     private static async Task GrantWakuuRelicsAsync(RunState runState)

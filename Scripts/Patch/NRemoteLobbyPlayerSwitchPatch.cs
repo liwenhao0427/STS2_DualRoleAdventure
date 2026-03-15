@@ -22,12 +22,15 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
 {
     private const string ButtonName = "LocalLobbyPlayerSwitchButton";
     private const string WakuuToggleName = "LocalLobbyPlayerWakuuToggle";
+    private const string WakuuHintName = "LocalLobbyPlayerWakuuHint";
+    private const string WakuuHintText = "瓦库将接管你的回合";
     private const string TrackerName = "LocalLobbyPlayerSwitchTracker";
 
     public static void Ensure(NRemoteLobbyPlayer playerNode)
     {
         EnsureButton(playerNode);
         EnsureWakuuToggle(playerNode);
+        EnsureWakuuHint(playerNode);
         EnsureTracker(playerNode);
         Refresh(playerNode);
     }
@@ -36,7 +39,8 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
     {
         LocalSimpleTextButton? button = playerNode.GetNodeOrNull<LocalSimpleTextButton>(ButtonName);
         CheckButton? wakuuToggle = playerNode.GetNodeOrNull<CheckButton>(WakuuToggleName);
-        if (button == null || wakuuToggle == null)
+        Label? wakuuHint = playerNode.GetNodeOrNull<Label>(WakuuHintName);
+        if (button == null || wakuuToggle == null || wakuuHint == null)
         {
             return;
         }
@@ -48,6 +52,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
                           && LocalSelfCoopContext.LocalPlayerIds.Contains(playerNode.PlayerId);
         button.Visible = shouldShow;
         wakuuToggle.Visible = shouldShow;
+        wakuuHint.Visible = shouldShow;
         if (!shouldShow)
         {
             return;
@@ -62,6 +67,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         bool wakuuEnabled = LocalSelfCoopContext.IsWakuuEnabled(playerNode.PlayerId);
         wakuuToggle.SetPressedNoSignal(wakuuEnabled);
         wakuuToggle.GlobalPosition = button.GlobalPosition + new Vector2(button.Size.X + 10f, -1f);
+        wakuuHint.GlobalPosition = wakuuToggle.GlobalPosition + new Vector2(wakuuToggle.Size.X + 8f, 5f);
     }
 
     private static void EnsureButton(NRemoteLobbyPlayer playerNode)
@@ -113,6 +119,28 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             Callable.From<bool>((pressed) =>
                 LocalSelfCoopContext.SetWakuuEnabled(playerNode.PlayerId, pressed, "char-select-left-list-toggle")));
         playerNode.AddChildSafely(toggle);
+    }
+
+    private static void EnsureWakuuHint(NRemoteLobbyPlayer playerNode)
+    {
+        if (playerNode.GetNodeOrNull<Label>(WakuuHintName) != null)
+        {
+            return;
+        }
+
+        Label hint = new Label
+        {
+            Name = WakuuHintName,
+            Text = WakuuHintText,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            TopLevel = true,
+            ZIndex = 90
+        };
+        hint.AddThemeFontSizeOverride("font_size", 16);
+        hint.AddThemeColorOverride("font_color", new Color("f3efe6"));
+        hint.AddThemeColorOverride("font_outline_color", new Color("111111"));
+        hint.AddThemeConstantOverride("outline_size", 5);
+        playerNode.AddChildSafely(hint);
     }
 
     private static void EnsureTracker(NRemoteLobbyPlayer playerNode)

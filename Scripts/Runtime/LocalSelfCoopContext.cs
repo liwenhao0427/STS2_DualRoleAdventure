@@ -100,7 +100,7 @@ internal static class LocalSelfCoopContext
             }
         }
 
-        LocalMultiControlLogger.Info($"瀹歌弓绮犵€涙ɑ銆傞幁銏狀槻閻★箑绨遍柊宥囩枂: {string.Join(",", _wakuuPlayerIds)}");
+        LocalMultiControlLogger.Info($"已恢复瓦库勾选玩家: {string.Join(",", _wakuuPlayerIds)}");
     }
 
     public static bool IsWakuuEnabled(ulong playerId)
@@ -123,7 +123,7 @@ internal static class LocalSelfCoopContext
             return false;
         }
 
-        LocalMultiControlLogger.Info($"閻★箑绨遍柊宥囩枂閺囧瓨鏌? player={playerId}, enabled={enabled}, source={source}");
+        LocalMultiControlLogger.Info($"瓦库勾选状态变更: player={playerId}, enabled={enabled}, source={source}");
         MarkCurrentProfileTag();
         return true;
     }
@@ -204,8 +204,8 @@ internal static class LocalSelfCoopContext
         TrimWakuuPlayerIdsToConfiguredPlayers();
 
         string slotLabel = GetSlotLabel(CurrentLobbyEditingPlayerId);
-        LocalMultiControlLogger.Info($"澶у巺缂栬緫瑙掕壊鍒囨崲: {previousPlayerId} -> {CurrentLobbyEditingPlayerId} (妲戒綅{slotLabel})");
-        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"澶у巺缂栬緫瑙掕壊: 妲戒綅{slotLabel}"));
+        LocalMultiControlLogger.Info($"大厅编辑角色切换: {previousPlayerId} -> {CurrentLobbyEditingPlayerId} (槽位{slotLabel})");
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"大厅编辑角色: 槽位{slotLabel}"));
         return true;
     }
 
@@ -232,8 +232,8 @@ internal static class LocalSelfCoopContext
         {
             string slotLabel = GetSlotLabel(CurrentLobbyEditingPlayerId);
             LocalMultiControlLogger.Info(
-                $"澶у巺缂栬緫瑙掕壊瀹氬悜鍒囨崲: {previousPlayerId} -> {CurrentLobbyEditingPlayerId} (妲戒綅{slotLabel})");
-            NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"澶у巺缂栬緫瑙掕壊: 妲戒綅{slotLabel}"));
+                $"大厅编辑角色定向切换: {previousPlayerId} -> {CurrentLobbyEditingPlayerId} (槽位{slotLabel})");
+            NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"大厅编辑角色: 槽位{slotLabel}"));
         }
 
         return true;
@@ -311,7 +311,7 @@ internal static class LocalSelfCoopContext
         }
 
         _pendingEventAutoSwitchPlayerId = playerId;
-        LocalMultiControlLogger.Info($"璁板綍浜嬩欢鑷姩鍒囨崲璇锋眰: player={playerId}");
+        LocalMultiControlLogger.Info($"记录事件自动切换请求: player={playerId}");
     }
 
     public static bool ShouldQueueEventAutoSwitchAfterEventState(EventModel eventModel)
@@ -652,4 +652,3 @@ internal static class LocalSelfCoopContext
         LocalSelfCoopSaveTag.MarkCurrentProfile(saveIds, GetWakuuPlayerIdsSnapshot());
     }
 }
-

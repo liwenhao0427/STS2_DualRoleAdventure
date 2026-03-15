@@ -1,20 +1,31 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Relics;
+using MegaCrit.Sts2.Core.Runs;
+using Godot;
 
 namespace LocalMultiControl.Scripts.Runtime;
 
 internal static class LocalWakuuRelicRuntime
 {
     private const int MaxCardsToPlay = 13;
+    private const long WatchdogRestartCooldownMs = 300L;
+
+    private static readonly Dictionary<string, long> _watchdogLastRunAt = new();
+    private static readonly HashSet<string> _watchdogInFlight = new();
 
     public static async Task ExecuteBeforePlayPhaseStartAsync(
         WhisperingEarring relic,
@@ -69,6 +80,100 @@ internal static class LocalWakuuRelicRuntime
             ? new LocString("relics", "WHISPERING_EARRING.warning")
             : new LocString("relics", "WHISPERING_EARRING.approval");
         TalkCmd.Play(line, relic.Owner.Creature);
+    }
+
+    public static bool TryScheduleWatchdog(Player player, string source)
+    {
+        CombatState? combatState = player.Creature.CombatState;
+        if (combatState == null || combatState.CurrentSide != CombatSide.Player || CombatManager.Instance.IsOverOrEnding)
+        {
+            return false;
+        }
+
+        WhisperingEarring? relic = player.GetRelic<WhisperingEarring>();
+        if (relic == null)
+        {
+            return false;
+        }
+
+        bool hasPlayableCards = PileType.Hand.GetPile(player).Cards.Any((card) => card.CanPlay());
+        if (!hasPlayableCards)
+        {
+            return false;
+        }
+
+        string key = $"{combatState.RoundNumber}:{player.NetId}";
+        long nowMs = (long)Time.GetTicksMsec();
+        if (_watchdogInFlight.Contains(key))
+        {
+            return false;
+        }
+
+        if (_watchdogLastRunAt.TryGetValue(key, out long lastRunMs)
+            && nowMs - lastRunMs < WatchdogRestartCooldownMs)
+        {
+            return false;
+        }
+
+        _watchdogLastRunAt[key] = nowMs;
+        _watchdogInFlight.Add(key);
+        TaskHelper.RunSafely(RunWatchdogAsync(key, relic, player, combatState, source));
+        return true;
+    }
+
+    private static async Task RunWatchdogAsync(
+        string key,
+        WhisperingEarring relic,
+        Player player,
+        CombatState combatState,
+        string source)
+    {
+        ulong? previousNetId = LocalContext.NetId;
+        ulong previousSenderId = LocalSelfCoopContext.NetService?.NetId ?? 0UL;
+        bool hasNetService = LocalSelfCoopContext.NetService != null;
+        try
+        {
+            if (!RunManager.Instance.IsInProgress || !CombatManager.Instance.IsInProgress || CombatManager.Instance.IsOverOrEnding)
+            {
+                return;
+            }
+
+            if (player.Creature.CombatState != combatState || player.GetRelic<WhisperingEarring>() == null)
+            {
+                return;
+            }
+
+            if (!PileType.Hand.GetPile(player).Cards.Any((card) => card.CanPlay()))
+            {
+                return;
+            }
+
+            LocalContext.NetId = player.NetId;
+            LocalSelfCoopContext.NetService?.SetCurrentSenderId(player.NetId);
+
+            HookPlayerChoiceContext choiceContext = new HookPlayerChoiceContext(
+                relic,
+                player.NetId,
+                combatState,
+                GameActionType.CombatPlayPhaseOnly);
+            Task action = ExecuteBeforePlayPhaseStartAsync(relic, choiceContext, player);
+            await choiceContext.AssignTaskAndWaitForPauseOrCompletion(action);
+            await action;
+            LocalMultiControlLogger.Info($"瓦库看门狗已重启自动出牌: player={player.NetId}, source={source}");
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"瓦库看门狗重启失败: player={player.NetId}, source={source}, error={exception.Message}");
+        }
+        finally
+        {
+            _watchdogInFlight.Remove(key);
+            LocalContext.NetId = previousNetId;
+            if (hasNetService)
+            {
+                LocalSelfCoopContext.NetService?.SetCurrentSenderId(previousSenderId);
+            }
+        }
     }
 
     private static Creature? ResolveTarget(CardModel card, CombatState combatState, Player owner)
