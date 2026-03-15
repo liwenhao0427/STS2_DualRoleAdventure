@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
@@ -23,8 +25,11 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
     private const string ButtonName = "LocalLobbyPlayerSwitchButton";
     private const string WakuuToggleName = "LocalLobbyPlayerWakuuToggle";
     private const string WakuuHintName = "LocalLobbyPlayerWakuuHint";
-    private const string WakuuHintText = "瓦库将接管你的回合";
     private const string TrackerName = "LocalLobbyPlayerSwitchTracker";
+
+    private static readonly Vector2 SelectorButtonSize = new(52f, 28f);
+    private static readonly Vector2 WakuuToggleSize = new(30f, 28f);
+    private static readonly Vector2 AnchorFallbackOffset = new(128f, 3f);
 
     public static void Ensure(NRemoteLobbyPlayer playerNode)
     {
@@ -50,24 +55,30 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
                           && !RunManager.Instance.IsInProgress
                           && inCharacterSelect
                           && LocalSelfCoopContext.LocalPlayerIds.Contains(playerNode.PlayerId);
+
         button.Visible = shouldShow;
         wakuuToggle.Visible = shouldShow;
-        wakuuHint.Visible = shouldShow;
+        wakuuHint.Visible = false;
+
         if (!shouldShow)
         {
+            RestoreOriginalIdLabel(playerNode);
             return;
         }
 
         button.ButtonText = string.Empty;
+        Rect2 anchorRect = ResolveIdAnchorRect(playerNode);
+        HideOriginalIdLabel(playerNode);
 
-        // 右侧固定偏移，避免覆盖左侧玩家信息。
-        float fixedX = playerNode.GlobalPosition.X + playerNode.Size.X + 72f;
-        button.GlobalPosition = new Vector2(fixedX, playerNode.GlobalPosition.Y + 2f);
+        button.GlobalPosition = anchorRect.Position + new Vector2(0f, -1f);
+        button.Size = SelectorButtonSize;
+        button.CustomMinimumSize = SelectorButtonSize;
 
         bool wakuuEnabled = LocalSelfCoopContext.IsWakuuEnabled(playerNode.PlayerId);
         wakuuToggle.SetPressedNoSignal(wakuuEnabled);
-        wakuuToggle.GlobalPosition = button.GlobalPosition + new Vector2(button.Size.X + 10f, -1f);
-        wakuuHint.GlobalPosition = wakuuToggle.GlobalPosition + new Vector2(wakuuToggle.Size.X + 8f, 5f);
+        wakuuToggle.GlobalPosition = button.GlobalPosition + new Vector2(button.Size.X + 4f, 0f);
+        wakuuToggle.Size = WakuuToggleSize;
+        wakuuToggle.CustomMinimumSize = WakuuToggleSize;
     }
 
     private static void EnsureButton(NRemoteLobbyPlayer playerNode)
@@ -77,22 +88,24 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             return;
         }
 
-        LocalSimpleTextButton button = new LocalSimpleTextButton
+        LocalSimpleTextButton button = new()
         {
             Name = ButtonName,
             ButtonText = string.Empty,
             FontSize = 18,
             FocusMode = Control.FocusModeEnum.None,
-            Size = new Vector2(68f, 32f),
-            CustomMinimumSize = new Vector2(68f, 32f),
+            Size = SelectorButtonSize,
+            CustomMinimumSize = SelectorButtonSize,
             ImageScale = Vector2.One * 1.5f,
             TopLevel = true,
             ZIndex = 90
         };
+
         button.Connect(
             MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl.SignalName.Released,
             Callable.From<MegaCrit.Sts2.Core.Nodes.GodotExtensions.NClickableControl>((_) =>
-                LocalSelfCoopContext.SetLobbyEditingPlayer(playerNode.PlayerId, "char-select-avatar-button")));
+                LocalSelfCoopContext.SetLobbyEditingPlayer(playerNode.PlayerId, "char-select-id-anchor-button")));
+
         playerNode.AddChildSafely(button);
     }
 
@@ -103,21 +116,23 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             return;
         }
 
-        CheckButton toggle = new CheckButton
+        CheckButton toggle = new()
         {
             Name = WakuuToggleName,
             Text = string.Empty,
             FocusMode = Control.FocusModeEnum.None,
             MouseFilter = Control.MouseFilterEnum.Stop,
-            Size = new Vector2(38f, 34f),
-            CustomMinimumSize = new Vector2(38f, 34f),
+            Size = WakuuToggleSize,
+            CustomMinimumSize = WakuuToggleSize,
             TopLevel = true,
             ZIndex = 90
         };
+
         toggle.Connect(
             BaseButton.SignalName.Toggled,
             Callable.From<bool>((pressed) =>
-                LocalSelfCoopContext.SetWakuuEnabled(playerNode.PlayerId, pressed, "char-select-left-list-toggle")));
+                LocalSelfCoopContext.SetWakuuEnabled(playerNode.PlayerId, pressed, "char-select-id-anchor-toggle")));
+
         playerNode.AddChildSafely(toggle);
     }
 
@@ -128,14 +143,15 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             return;
         }
 
-        Label hint = new Label
+        Label hint = new()
         {
             Name = WakuuHintName,
-            Text = WakuuHintText,
+            Text = string.Empty,
             MouseFilter = Control.MouseFilterEnum.Ignore,
             TopLevel = true,
             ZIndex = 90
         };
+
         hint.AddThemeFontSizeOverride("font_size", 16);
         hint.AddThemeColorOverride("font_color", new Color("f3efe6"));
         hint.AddThemeColorOverride("font_outline_color", new Color("111111"));
@@ -150,10 +166,11 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             return;
         }
 
-        LocalRemoteLobbyPlayerSwitchTracker tracker = new LocalRemoteLobbyPlayerSwitchTracker
+        LocalRemoteLobbyPlayerSwitchTracker tracker = new()
         {
             Name = TrackerName
         };
+
         tracker.Initialize(playerNode);
         playerNode.AddChild(tracker);
     }
@@ -169,6 +186,82 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         }
 
         return false;
+    }
+
+    private static Rect2 ResolveIdAnchorRect(NRemoteLobbyPlayer playerNode)
+    {
+        Label? idLabel = TryFindIdLabel(playerNode);
+        if (idLabel != null)
+        {
+            Vector2 size = idLabel.Size;
+            if (size.X <= 2f)
+            {
+                size = new Vector2(92f, SelectorButtonSize.Y);
+            }
+
+            return new Rect2(idLabel.GlobalPosition, size);
+        }
+
+        Vector2 fallbackPosition = playerNode.GlobalPosition + AnchorFallbackOffset;
+        return new Rect2(fallbackPosition, new Vector2(92f, SelectorButtonSize.Y));
+    }
+
+    private static void HideOriginalIdLabel(NRemoteLobbyPlayer playerNode)
+    {
+        Label? idLabel = TryFindIdLabel(playerNode);
+        if (idLabel != null)
+        {
+            idLabel.Visible = false;
+        }
+    }
+
+    private static void RestoreOriginalIdLabel(NRemoteLobbyPlayer playerNode)
+    {
+        Label? idLabel = TryFindIdLabel(playerNode);
+        if (idLabel != null)
+        {
+            idLabel.Visible = true;
+        }
+    }
+
+    private static Label? TryFindIdLabel(NRemoteLobbyPlayer playerNode)
+    {
+        string playerIdText = playerNode.PlayerId.ToString();
+        foreach (Node child in EnumerateDescendants(playerNode))
+        {
+            if (child is not Label label)
+            {
+                continue;
+            }
+
+            if (label.Name == WakuuHintName)
+            {
+                continue;
+            }
+
+            string name = label.Name.ToString();
+            string text = label.Text ?? string.Empty;
+            bool nameLooksLikeId = name.Contains("id", StringComparison.OrdinalIgnoreCase);
+            bool textContainsPlayerId = text.Contains(playerIdText, StringComparison.Ordinal);
+            if (nameLooksLikeId || textContainsPlayerId)
+            {
+                return label;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<Node> EnumerateDescendants(Node root)
+    {
+        foreach (Node child in root.GetChildren())
+        {
+            yield return child;
+            foreach (Node nested in EnumerateDescendants(child))
+            {
+                yield return nested;
+            }
+        }
     }
 }
 
