@@ -5,7 +5,9 @@ using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Patch;
@@ -88,6 +90,8 @@ internal static class TreasureRoomRelicSynchronizerPatch
 [HarmonyPatch(typeof(TreasureRoomRelicSynchronizer), nameof(TreasureRoomRelicSynchronizer.BeginRelicPicking))]
 internal static class TreasureRoomRelicSynchronizerBeginPatch
 {
+    private const int MAX_MANUAL_RELIC_OPTIONS = 4;
+
     [HarmonyPostfix]
     private static void Postfix(TreasureRoomRelicSynchronizer __instance)
     {
@@ -99,17 +103,45 @@ internal static class TreasureRoomRelicSynchronizerBeginPatch
         try
         {
             List<int?>? votes = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_votes")?.GetValue(__instance) as List<int?>;
-            if (votes == null || votes.Count <= 1)
+            IReadOnlyList<Player>? players = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_playerCollection")?.GetValue(__instance) is IPlayerCollection playerCollection
+                ? playerCollection.Players
+                : null;
+            IReadOnlyList<RelicModel>? currentRelics = __instance.CurrentRelics;
+            if (votes == null || players == null || votes.Count <= 1 || currentRelics == null || currentRelics.Count <= 1)
             {
                 return;
             }
 
-            for (int i = 0; i < votes.Count; i++)
+            int sharedCount = Math.Min(votes.Count, players.Count);
+            int manualPlayerCount = Math.Min(sharedCount, Math.Min(currentRelics.Count, MAX_MANUAL_RELIC_OPTIONS));
+            if (manualPlayerCount <= 0)
             {
-                votes[i] = null;
+                return;
             }
 
-            LocalMultiControlLogger.Info("宝箱已禁用自动代投，改为逐角色手动选择。");
+            Rng? rng = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_rng")?.GetValue(__instance) as Rng;
+            for (int i = 0; i < sharedCount; i++)
+            {
+                if (i < manualPlayerCount)
+                {
+                    votes[i] = null;
+                }
+                else
+                {
+                    int pickIndex = rng?.NextInt(manualPlayerCount) ?? 0;
+                    votes[i] = pickIndex;
+                }
+            }
+
+            int autoCopyCount = sharedCount - manualPlayerCount;
+            if (autoCopyCount > 0)
+            {
+                LocalMultiControlLogger.Info($"宝箱候选遗物超过界面上限，已启用后续角色随机复制: manual={manualPlayerCount}, autoCopy={autoCopyCount}");
+            }
+            else
+            {
+                LocalMultiControlLogger.Info("宝箱已禁用自动代投，改为逐角色手动选择。");
+            }
         }
         catch (Exception exception)
         {
