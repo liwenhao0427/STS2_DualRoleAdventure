@@ -23,14 +23,26 @@ internal static class CardSelectCmdPatch
             return true;
         }
 
-        if (!CombatManager.Instance.IsInProgress)
+        bool isLocalSelfCoopPlayer = false;
+        foreach (ulong localPlayerId in LocalSelfCoopContext.LocalPlayerIds)
         {
-            // 战斗外（篝火/事件）必须保留手动选牌，避免被自动随机代选。
+            if (localPlayerId != player.NetId)
+            {
+                continue;
+            }
+
+            isLocalSelfCoopPlayer = true;
+            break;
+        }
+
+        if (!isLocalSelfCoopPlayer)
+        {
             return true;
         }
 
         __result = true;
-        LocalMultiControlLogger.Info($"本地双人模式下强制本地处理选牌: player={player.NetId}, inCombat={CombatManager.Instance.IsInProgress}");
+        LocalMultiControlLogger.Info(
+            $"本地多控下强制本地处理选牌: player={player.NetId}, inCombat={CombatManager.Instance.IsInProgress}");
         return false;
     }
 }
