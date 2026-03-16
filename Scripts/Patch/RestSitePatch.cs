@@ -81,6 +81,8 @@ internal static class HealRestSiteOptionPatch
 [HarmonyPatch(typeof(RestSiteSynchronizer), nameof(RestSiteSynchronizer.ChooseLocalOption))]
 internal static class RestSiteSynchronizerChooseLocalOptionPatch
 {
+    private static ulong? _pendingSwitchTargetPlayerId;
+
     [HarmonyPostfix]
     private static void Postfix(RestSiteSynchronizer __instance, int index, ref Task<bool> __result)
     {
@@ -127,15 +129,24 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
             return success;
         }
 
-        // 固定策略：每位角色都必须各选一次，当前角色成功后切到下一位仍有选项的角色。
-        Callable.From(delegate
-        {
-            LocalMultiControlRuntime.SwitchControlledPlayerTo(nextPlayerId.Value, "rest-site-next-mandatory-choice");
-        }).CallDeferred();
+        _pendingSwitchTargetPlayerId = nextPlayerId.Value;
         LocalMultiControlLogger.Info(
-            $"休息区选择成功后切换到下一位待选角色: {localPlayerId.Value} -> {nextPlayerId.Value}, optionIndex={optionIndex}, snapshot={DescribeOptions(sourceOptionsSnapshot)}");
+            $"休息区选择成功，已排队切换到下一位待选角色: {localPlayerId.Value} -> {nextPlayerId.Value}, optionIndex={optionIndex}, snapshot={DescribeOptions(sourceOptionsSnapshot)}");
 
         return success;
+    }
+
+    internal static bool TryConsumePendingSwitchTarget(out ulong playerId)
+    {
+        if (_pendingSwitchTargetPlayerId.HasValue)
+        {
+            playerId = _pendingSwitchTargetPlayerId.Value;
+            _pendingSwitchTargetPlayerId = null;
+            return true;
+        }
+
+        playerId = 0;
+        return false;
     }
 
     private static ulong? ReadLocalPlayerIdFromSynchronizer(RestSiteSynchronizer synchronizer)
@@ -186,6 +197,36 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
         }
 
         return "[" + string.Join(", ", options.Select((option, index) => $"{index}:{option.GetType().Name}")) + "]";
+    }
+}
+
+[HarmonyPatch(typeof(NRestSiteRoom), "AfterSelectingOptionAsync")]
+internal static class NRestSiteRoomAfterSelectingOptionPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(ref Task __result)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
+        {
+            return;
+        }
+
+        if (!RestSiteSynchronizerChooseLocalOptionPatch.TryConsumePendingSwitchTarget(out ulong targetPlayerId))
+        {
+            return;
+        }
+
+        __result = WaitRoomSelectionAndSwitchAsync(__result, targetPlayerId);
+    }
+
+    private static async Task WaitRoomSelectionAndSwitchAsync(Task originalTask, ulong targetPlayerId)
+    {
+        await originalTask;
+        await Task.Yield();
+        Callable.From(delegate
+        {
+            LocalMultiControlRuntime.SwitchControlledPlayerTo(targetPlayerId, "rest-site-next-mandatory-choice");
+        }).CallDeferred();
     }
 }
 
