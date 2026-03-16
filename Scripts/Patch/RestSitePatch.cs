@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.RestSite;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
@@ -82,6 +83,7 @@ internal static class HealRestSiteOptionPatch
 internal static class RestSiteSynchronizerChooseLocalOptionPatch
 {
     private static ulong? _pendingSwitchTargetPlayerId;
+    private static int? _pendingOptionIndex;
 
     [HarmonyPostfix]
     private static void Postfix(RestSiteSynchronizer __instance, int index, ref Task<bool> __result)
@@ -130,22 +132,26 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
         }
 
         _pendingSwitchTargetPlayerId = nextPlayerId.Value;
+        _pendingOptionIndex = optionIndex;
         LocalMultiControlLogger.Info(
-            $"休息区选择成功，已排队切换到下一位待选角色: {localPlayerId.Value} -> {nextPlayerId.Value}, optionIndex={optionIndex}, snapshot={DescribeOptions(sourceOptionsSnapshot)}");
+            $"休息区选择成功，已排队切换到下一位待选角色并续传同索引选项: {localPlayerId.Value} -> {nextPlayerId.Value}, optionIndex={optionIndex}, snapshot={DescribeOptions(sourceOptionsSnapshot)}");
 
         return success;
     }
 
-    internal static bool TryConsumePendingSwitchTarget(out ulong playerId)
+    internal static bool TryConsumePendingSwitchTarget(out ulong playerId, out int optionIndex)
     {
         if (_pendingSwitchTargetPlayerId.HasValue)
         {
             playerId = _pendingSwitchTargetPlayerId.Value;
+            optionIndex = _pendingOptionIndex ?? -1;
             _pendingSwitchTargetPlayerId = null;
+            _pendingOptionIndex = null;
             return true;
         }
 
         playerId = 0;
+        optionIndex = -1;
         return false;
     }
 
@@ -211,21 +217,38 @@ internal static class NRestSiteRoomAfterSelectingOptionPatch
             return;
         }
 
-        if (!RestSiteSynchronizerChooseLocalOptionPatch.TryConsumePendingSwitchTarget(out ulong targetPlayerId))
+        if (!RestSiteSynchronizerChooseLocalOptionPatch.TryConsumePendingSwitchTarget(out ulong targetPlayerId, out int optionIndex))
         {
             return;
         }
 
-        __result = WaitRoomSelectionAndSwitchAsync(__result, targetPlayerId);
+        __result = WaitRoomSelectionAndSwitchAsync(__result, targetPlayerId, optionIndex);
     }
 
-    private static async Task WaitRoomSelectionAndSwitchAsync(Task originalTask, ulong targetPlayerId)
+    private static async Task WaitRoomSelectionAndSwitchAsync(Task originalTask, ulong targetPlayerId, int optionIndex)
     {
         await originalTask;
         await Task.Yield();
         Callable.From(delegate
         {
             LocalMultiControlRuntime.SwitchControlledPlayerTo(targetPlayerId, "rest-site-next-mandatory-choice");
+
+            if (optionIndex < 0)
+            {
+                return;
+            }
+
+            IReadOnlyList<RestSiteOption> targetOptions = RunManager.Instance.RestSiteSynchronizer.GetOptionsForPlayer(targetPlayerId);
+            if (optionIndex >= targetOptions.Count)
+            {
+                LocalMultiControlLogger.Info(
+                    $"休息区续传索引已跳过：目标角色选项数量不足，target={targetPlayerId}, optionIndex={optionIndex}, options={targetOptions.Count}");
+                return;
+            }
+
+            TaskHelper.RunSafely(RunManager.Instance.RestSiteSynchronizer.ChooseLocalOption(optionIndex));
+            LocalMultiControlLogger.Info(
+                $"休息区已为下一位角色续传同索引选项: target={targetPlayerId}, optionIndex={optionIndex}");
         }).CallDeferred();
     }
 }
