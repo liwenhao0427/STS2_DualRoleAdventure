@@ -200,6 +200,20 @@
 
 - 默认支持“快速发版”：当用户明确要求直接发 Release 时，允许基于当前项目根已有产物直接发布，不强制重新编译或重新导出 pck。
 - 快速发版使用文件：`DualRoleAdventure.dll` 与 `DualRoleAdventure.pck`（均位于项目根）。
+- 发布时必须同时发布同名 JSON 配置文件（例如：`DualRoleAdventure.json`），格式参考其他 mod 配置：
+  ```json
+  {
+    "id": "DualRoleAdventure",
+    "name": "DualRoleAdventure",
+    "author": "LocalMultiControl",
+    "description": "实现联机转本地多控能力，使单机支持多角色/多输入控制",
+    "version": "v1.01",
+    "has_pck": true,
+    "has_dll": true,
+    "dependencies": ["baselib"],
+    "affects_gameplay": true
+  }
+  ```
 - 仅在用户明确要求“重编译/重打包”或当前产物缺失时，才执行 `dotnet build` 与 Godot 导出。
 - 发布时照常创建语义化 tag 与 GitHub Release，填写主要变更说明。
 
