@@ -40,14 +40,19 @@ internal static class NRelicInventoryPatch
 
     internal static bool TryRebuildRelicInventoryToPrimaryPlayer(NRelicInventory relicInventory, IRunState runState)
     {
-        MegaCrit.Sts2.Core.Entities.Players.Player? primaryPlayer = runState.GetPlayer(LocalSelfCoopContext.PrimaryPlayerId);
-        if (primaryPlayer == null)
+        return TryRebuildRelicInventoryToPlayer(relicInventory, runState, LocalSelfCoopContext.PrimaryPlayerId);
+    }
+
+    internal static bool TryRebuildRelicInventoryToPlayer(NRelicInventory relicInventory, IRunState runState, ulong playerId)
+    {
+        MegaCrit.Sts2.Core.Entities.Players.Player? targetPlayer = runState.GetPlayer(playerId);
+        if (targetPlayer == null)
         {
             return false;
         }
 
         AccessTools.Method(typeof(NRelicInventory), "DisconnectPlayerEvents")?.Invoke(relicInventory, null);
-        AccessTools.Field(typeof(NRelicInventory), "_player")?.SetValue(relicInventory, primaryPlayer);
+        AccessTools.Field(typeof(NRelicInventory), "_player")?.SetValue(relicInventory, targetPlayer);
         AccessTools.Method(typeof(NRelicInventory), "ConnectPlayerEvents")?.Invoke(relicInventory, null);
 
         List<NRelicInventoryHolder>? relicNodes = AccessTools.Field(typeof(NRelicInventory), "_relicNodes")?.GetValue(relicInventory) as List<NRelicInventoryHolder>;
@@ -69,12 +74,12 @@ internal static class NRelicInventoryPatch
             return false;
         }
 
-        foreach (RelicModel relic in primaryPlayer.Relics)
+        foreach (RelicModel relic in targetPlayer.Relics)
         {
             addMethod.Invoke(relicInventory, new object[] { relic, true, -1 });
         }
 
-        LocalMultiControlLogger.Info($"遗物栏已重建到1号位玩家: player={primaryPlayer.NetId}, count={primaryPlayer.Relics.Count}");
+        LocalMultiControlLogger.Info($"遗物栏已重建到目标玩家: player={targetPlayer.NetId}, count={targetPlayer.Relics.Count}");
         return true;
     }
 }

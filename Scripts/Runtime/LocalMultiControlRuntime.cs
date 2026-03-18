@@ -686,8 +686,9 @@ internal static class LocalMultiControlRuntime
     private static void RefreshTopBarForControlledPlayer(ulong playerId)
     {
         NTopBar? topBar = NRun.Instance?.GlobalUi?.TopBar;
+        NRun? runNode = NRun.Instance;
         RunState? runState = RunManager.Instance.DebugOnlyGetState();
-        if (topBar == null || runState == null)
+        if (topBar == null || runState == null || runNode?.GlobalUi == null)
         {
             return;
         }
@@ -710,13 +711,47 @@ internal static class LocalMultiControlRuntime
 
             topBar.Portrait.Initialize(player);
 
-            // 本地双人当前改为“药水/遗物共用展示”策略：
-            // 切换角色时不重建顶部药水栏与遗物栏，避免出现切换错乱与节点叠层。
-            // 若后续恢复分角色展示，需要先通过实机回归验证再调整。
+            // 药水仍维持1号位共用展示；遗物按当前控制角色刷新。
+            // 注意：遗物刷新必须先清理旧节点再重建，避免切人后叠层。
+            NRelicInventoryPatch.TryRebuildRelicInventoryToPlayer(runNode.GlobalUi.RelicInventory, runState, playerId);
+            AccessTools.Method(typeof(MegaCrit.Sts2.Core.Nodes.Relics.NRelicInventory), "UpdateNavigation")
+                ?.Invoke(runNode.GlobalUi.RelicInventory, Array.Empty<object>());
         }
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"刷新顶部栏失败: {exception.Message}");
+        }
+    }
+
+    public static void RefreshCombatEnergyForCurrentPlayer(string source)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !RunManager.Instance.IsInProgress || !CombatManager.Instance.IsInProgress)
+        {
+            return;
+        }
+
+        NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+        CombatState? combatState = combatUi != null ? TryGetCombatState(combatUi) : null;
+        if (combatUi == null || combatState == null)
+        {
+            return;
+        }
+
+        ulong playerId = Session.CurrentControlledPlayerId ?? LocalContext.NetId ?? LocalSelfCoopContext.PrimaryPlayerId;
+        Player? player = combatState.GetPlayer(playerId);
+        if (player == null)
+        {
+            return;
+        }
+
+        try
+        {
+            RefreshCombatEnergyUi(combatUi, player);
+            LocalMultiControlLogger.Info($"入战能量显示已刷新: player={playerId}, source={source}");
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"入战能量显示刷新失败: player={playerId}, source={source}, error={exception.Message}");
         }
     }
 
