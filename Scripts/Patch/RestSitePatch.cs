@@ -245,7 +245,7 @@ internal static class NRestSiteButtonSelectGuardPatch
 internal static class NRestSiteRoomReadyPatch
 {
     [HarmonyPostfix]
-    private static void Postfix()
+    private static void Postfix(NRestSiteRoom __instance)
     {
         if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
         {
@@ -254,8 +254,35 @@ internal static class NRestSiteRoomReadyPatch
 
         Callable.From(delegate
         {
-            LocalMultiControlRuntime.SwitchControlledPlayerTo(LocalSelfCoopContext.PrimaryPlayerId, "rest-site-enter-primary");
-            RestSiteUiRefreshUtil.TryRefresh("rest-site-enter-primary");
+            EnsurePrimaryPlayerOptionsVisible(__instance, attempt: 0);
+        }).CallDeferred();
+    }
+
+    private static void EnsurePrimaryPlayerOptionsVisible(NRestSiteRoom room, int attempt)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode || !RunManager.Instance.IsInProgress)
+        {
+            return;
+        }
+
+        if (NRestSiteRoom.Instance != room)
+        {
+            return;
+        }
+
+        LocalMultiControlRuntime.SwitchControlledPlayerTo(LocalSelfCoopContext.PrimaryPlayerId, $"rest-site-enter-primary-{attempt}");
+        RestSiteUiRefreshUtil.TryRefresh($"rest-site-enter-primary-{attempt}");
+
+        int optionCount = room.Options.Count;
+        if (optionCount > 0 || attempt >= 3)
+        {
+            LocalMultiControlLogger.Info($"休息区进入后选项检查: attempt={attempt}, options={optionCount}");
+            return;
+        }
+
+        Callable.From(delegate
+        {
+            EnsurePrimaryPlayerOptionsVisible(room, attempt + 1);
         }).CallDeferred();
     }
 }
