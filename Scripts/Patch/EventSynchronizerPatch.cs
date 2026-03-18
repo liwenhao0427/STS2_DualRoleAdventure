@@ -1,14 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Events;
-using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -18,7 +15,6 @@ namespace LocalMultiControl.Scripts.Patch;
 internal static class EventSynchronizerPatch
 {
     private static bool _isChoosingSharedEventOption;
-    private static int _isBroadcastingLocalEventOption;
 
     private struct SenderState
     {
@@ -32,11 +28,6 @@ internal static class EventSynchronizerPatch
     {
         __state = default;
         if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleEventFlow)
-        {
-            return;
-        }
-
-        if (Volatile.Read(ref _isBroadcastingLocalEventOption) != 0)
         {
             return;
         }
@@ -91,18 +82,6 @@ internal static class EventSynchronizerPatch
 
         if (!synchronizer.IsShared)
         {
-            if (LocalSelfCoopContext.EventSyncAllEnabled)
-            {
-                if (ShouldSkipBroadcastForNeow(synchronizer))
-                {
-                    LocalMultiControlLogger.Info("检测到涅奥事件，跳过普通事件广播，保持各角色独立开局选项。");
-                    return;
-                }
-
-                TryBroadcastNonSharedEventChoice(synchronizer, index);
-                return;
-            }
-
             ulong currentPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId ?? 0;
             if (currentPlayerId != 0)
             {
@@ -232,112 +211,6 @@ internal static class EventSynchronizerPatch
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"共享事件待选角色切换失败: {exception.Message}");
-        }
-    }
-
-    private static bool ShouldSkipBroadcastForNeow(EventSynchronizer synchronizer)
-    {
-        try
-        {
-            EventModel localEvent = synchronizer.GetLocalEvent();
-            string eventId = localEvent.Id.Entry;
-            return string.Equals(eventId, "NEOW", StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static void TryBroadcastNonSharedEventChoice(EventSynchronizer synchronizer, int index)
-    {
-        if (Volatile.Read(ref _isBroadcastingLocalEventOption) != 0)
-        {
-            return;
-        }
-
-        INetGameService? netService = AccessTools.Field(typeof(EventSynchronizer), "_netService")?.GetValue(synchronizer) as INetGameService;
-        if (netService is not LocalLoopbackHostGameService loopbackService)
-        {
-            return;
-        }
-
-        IPlayerCollection? playerCollection = AccessTools.Field(typeof(EventSynchronizer), "_playerCollection")?.GetValue(synchronizer) as IPlayerCollection;
-        if (playerCollection == null || playerCollection.Players.Count <= 1)
-        {
-            return;
-        }
-
-        ulong sourcePlayerId = LocalContext.NetId
-            ?? LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId
-            ?? LocalSelfCoopContext.PrimaryPlayerId;
-        List<Player> targetPlayers = playerCollection.Players
-            .Where((player) => player.NetId != sourcePlayerId)
-            .Where((player) => ShouldApplyChoiceToPlayer(synchronizer, player, index))
-            .ToList();
-        if (targetPlayers.Count == 0)
-        {
-            LocalMultiControlLogger.Info($"普通事件无可广播目标: source={sourcePlayerId}, option={index}");
-            return;
-        }
-
-        if (Interlocked.CompareExchange(ref _isBroadcastingLocalEventOption, 1, 0) != 0)
-        {
-            return;
-        }
-
-        System.Reflection.FieldInfo? localPlayerIdField = AccessTools.Field(typeof(EventSynchronizer), "_localPlayerId");
-        object? previousLocalPlayerIdValue = localPlayerIdField?.GetValue(synchronizer);
-        ulong? previousContextNetId = LocalContext.NetId;
-        ulong previousSenderId = loopbackService.NetId;
-        try
-        {
-            foreach (Player targetPlayer in targetPlayers)
-            {
-                try
-                {
-                    localPlayerIdField?.SetValue(synchronizer, targetPlayer.NetId);
-                    LocalContext.NetId = targetPlayer.NetId;
-                    loopbackService.SetCurrentSenderId(targetPlayer.NetId);
-                    synchronizer.ChooseLocalOption(index);
-                    LocalMultiControlLogger.Info(
-                        $"普通事件选项已广播到本地角色: source={sourcePlayerId}, target={targetPlayer.NetId}, option={index}");
-                }
-                catch (Exception exception)
-                {
-                    LocalMultiControlLogger.Warn(
-                        $"普通事件选项广播失败: source={sourcePlayerId}, target={targetPlayer.NetId}, option={index}, error={exception.Message}");
-                }
-            }
-        }
-        finally
-        {
-            if (localPlayerIdField != null)
-            {
-                localPlayerIdField.SetValue(synchronizer, previousLocalPlayerIdValue);
-            }
-
-            loopbackService.SetCurrentSenderId(previousSenderId);
-            LocalContext.NetId = previousContextNetId;
-            Volatile.Write(ref _isBroadcastingLocalEventOption, 0);
-        }
-    }
-
-    private static bool ShouldApplyChoiceToPlayer(EventSynchronizer synchronizer, Player player, int index)
-    {
-        try
-        {
-            EventModel eventModel = synchronizer.GetEventForPlayer(player);
-            if (eventModel.IsFinished)
-            {
-                return false;
-            }
-
-            return index >= 0 && index < eventModel.CurrentOptions.Count;
-        }
-        catch
-        {
-            return false;
         }
     }
 

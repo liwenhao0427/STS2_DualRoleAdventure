@@ -64,7 +64,7 @@ internal static class PlayerGainGoldMirrorPatch
             return;
         }
 
-        // 需求调整：金币按角色独立结算，不再镜像给其他角色。
+        __result = MirrorGoldToOtherPlayersAsync(amount, player, wasStolenBack, __result);
     }
 
     private static async Task MirrorGoldToOtherPlayersAsync(decimal amount, Player sourcePlayer, bool wasStolenBack, Task originalTask)

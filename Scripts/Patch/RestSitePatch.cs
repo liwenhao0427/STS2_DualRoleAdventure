@@ -241,6 +241,25 @@ internal static class NRestSiteButtonSelectGuardPatch
     }
 }
 
+[HarmonyPatch(typeof(NRestSiteRoom), nameof(NRestSiteRoom._Ready))]
+internal static class NRestSiteRoomReadyPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix()
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
+        {
+            return;
+        }
+
+        Callable.From(delegate
+        {
+            LocalMultiControlRuntime.SwitchControlledPlayerTo(LocalSelfCoopContext.PrimaryPlayerId, "rest-site-enter-primary");
+            RestSiteUiRefreshUtil.TryRefresh("rest-site-enter-primary");
+        }).CallDeferred();
+    }
+}
+
 internal static class RestSiteUiRefreshUtil
 {
     internal static bool TryRefresh(string source)

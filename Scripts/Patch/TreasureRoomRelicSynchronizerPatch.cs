@@ -72,13 +72,6 @@ internal static class TreasureRoomRelicSynchronizerPatch
                 return false;
             }
 
-            int playerSlot = players.GetPlayerSlotIndex(player);
-            if (playerSlot != 0 || player.NetId != plan.PrimaryPlayer.NetId)
-            {
-                LocalMultiControlLogger.Info($"宝箱后续角色已跳过投票: player={player.NetId}, slot={playerSlot}");
-                return false;
-            }
-
             int sharedCount = Math.Min(votes.Count, players.Players.Count);
             for (int i = 0; i < sharedCount; i++)
             {
@@ -94,15 +87,17 @@ internal static class TreasureRoomRelicSynchronizerPatch
                 {
                     type = RelicPickingResultType.OnlyOnePlayerVoted,
                     relic = selectedRelic,
-                    player = plan.PrimaryPlayer
+                    player = player
                 }
             };
 
             InvokeRelicsAwarded(__instance, results);
-            GrantFollowerCopies(plan, selectedRelic);
+            GrantFollowerCopies(plan, selectedRelic, player);
             AccessTools.Method(typeof(TreasureRoomRelicSynchronizer), "EndRelicVoting")?.Invoke(__instance, null);
             SkipAutoSwitchOnce.Add(__instance);
             RemoveOverflowPlan(__instance);
+            LocalMultiControlLogger.Info(
+                $"宝箱5人以上快速结算：player={player.NetId}, relic={selectedRelic.Id.Entry}，已同步到其余角色并结束房间。");
             return false;
         }
         catch (Exception exception)
@@ -113,13 +108,16 @@ internal static class TreasureRoomRelicSynchronizerPatch
         }
     }
 
-    private static void GrantFollowerCopies(OverflowCopyPlan plan, RelicModel selectedRelic)
+    private static void GrantFollowerCopies(OverflowCopyPlan plan, RelicModel selectedRelic, Player sourcePlayer)
     {
-        foreach (Player follower in plan.Followers)
+        IEnumerable<Player> targets = new[] { plan.PrimaryPlayer }
+            .Concat(plan.Followers)
+            .Where((candidate) => candidate.NetId != sourcePlayer.NetId);
+        foreach (Player follower in targets)
         {
             RelicModel copiedRelic = selectedRelic.ToMutable();
             TaskHelper.RunSafely(RelicCmd.Obtain(copiedRelic, follower));
-            LocalMultiControlLogger.Info($"宝箱后续角色直接复制1号位遗物: source={plan.PrimaryPlayer.NetId}, target={follower.NetId}, relic={copiedRelic.Id.Entry}");
+            LocalMultiControlLogger.Info($"宝箱5人以上遗物同步: source={sourcePlayer.NetId}, target={follower.NetId}, relic={copiedRelic.Id.Entry}");
         }
     }
 
