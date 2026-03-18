@@ -65,7 +65,7 @@ internal static class EventSynchronizerPatch
     {
         try
         {
-            TryAutoProxyEventChoice(__instance, index, __state);
+            TryAutoProxyEventChoice(__instance, index);
         }
         finally
         {
@@ -82,7 +82,7 @@ internal static class EventSynchronizerPatch
         }
     }
 
-    private static void TryAutoProxyEventChoice(EventSynchronizer synchronizer, int index, SenderState state)
+    private static void TryAutoProxyEventChoice(EventSynchronizer synchronizer, int index)
     {
         if (!LocalSelfCoopContext.IsEnabled)
         {
@@ -91,7 +91,7 @@ internal static class EventSynchronizerPatch
 
         if (!synchronizer.IsShared)
         {
-            if (LocalSelfCoopContext.UseSingleEventFlow)
+            if (LocalSelfCoopContext.EventSyncAllEnabled)
             {
                 if (ShouldSkipBroadcastForNeow(synchronizer))
                 {
@@ -103,15 +103,18 @@ internal static class EventSynchronizerPatch
                 return;
             }
 
-            if (!LocalSelfCoopContext.UseSingleEventFlow)
+            ulong currentPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId ?? 0;
+            if (currentPlayerId != 0)
             {
-                ulong currentPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId ?? 0;
-                if (currentPlayerId != 0)
-                {
-                    LocalSelfCoopContext.RequestEventAutoSwitchAfterChoice(currentPlayerId);
-                }
+                LocalSelfCoopContext.RequestEventAutoSwitchAfterChoice(currentPlayerId);
             }
 
+            return;
+        }
+
+        if (!LocalSelfCoopContext.EventSyncAllEnabled)
+        {
+            TrySwitchToNextPendingSharedVotePlayer(synchronizer);
             return;
         }
 
@@ -179,6 +182,56 @@ internal static class EventSynchronizerPatch
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"共享事件自动补票失败: {exception.Message}");
+        }
+    }
+
+    private static void TrySwitchToNextPendingSharedVotePlayer(EventSynchronizer synchronizer)
+    {
+        try
+        {
+            IPlayerCollection? playerCollection = AccessTools.Field(typeof(EventSynchronizer), "_playerCollection")?.GetValue(synchronizer) as IPlayerCollection;
+            List<uint?>? votes = AccessTools.Field(typeof(EventSynchronizer), "_playerVotes")?.GetValue(synchronizer) as List<uint?>;
+            if (playerCollection == null || votes == null)
+            {
+                return;
+            }
+
+            int sharedCount = Math.Min(playerCollection.Players.Count, votes.Count);
+            if (sharedCount < 2)
+            {
+                return;
+            }
+
+            List<Player> players = playerCollection.Players.Take(sharedCount).ToList();
+            ulong currentPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId
+                ?? LocalContext.NetId
+                ?? LocalSelfCoopContext.PrimaryPlayerId;
+            int currentSlot = players.FindIndex((player) => player.NetId == currentPlayerId);
+            if (currentSlot < 0)
+            {
+                currentSlot = 0;
+            }
+
+            for (int step = 1; step < sharedCount; step++)
+            {
+                int slot = (currentSlot + step) % sharedCount;
+                if (votes[slot].HasValue)
+                {
+                    continue;
+                }
+
+                ulong targetPlayerId = players[slot].NetId;
+                Callable.From(delegate
+                {
+                    LocalMultiControlRuntime.SwitchControlledPlayerTo(targetPlayerId, "event-shared-next-player");
+                }).CallDeferred();
+                LocalMultiControlLogger.Info($"共享事件投票已切换到下一位待选角色: {currentPlayerId} -> {targetPlayerId}");
+                return;
+            }
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"共享事件待选角色切换失败: {exception.Message}");
         }
     }
 
