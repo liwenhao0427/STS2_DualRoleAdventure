@@ -1,12 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Patch;
@@ -239,5 +244,69 @@ internal static class EventSynchronizerPatch
                 _isChoosingSharedEventOption = false;
             }
         }).CallDeferred();
+    }
+}
+
+[HarmonyPatch(typeof(EventSynchronizer), "ChooseOptionForEvent")]
+internal static class EventSynchronizerChooseOptionForEventPatch
+{
+    private static readonly SemaphoreSlim SharedEventChoiceSemaphore = new(1, 1);
+
+    [HarmonyPrefix]
+    private static bool Prefix(EventSynchronizer __instance, Player player, int optionIndex)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !RunManager.Instance.IsInProgress || !__instance.IsShared)
+        {
+            return true;
+        }
+
+        if (RunManager.Instance.NetService is not LocalLoopbackHostGameService)
+        {
+            return true;
+        }
+
+        EventModel eventForPlayer = __instance.GetEventForPlayer(player);
+        if (eventForPlayer.IsFinished)
+        {
+            throw new InvalidOperationException($"Option chosen for player {player} on {eventForPlayer}, but it is already finished!");
+        }
+
+        if (optionIndex < 0 || optionIndex >= eventForPlayer.CurrentOptions.Count)
+        {
+            throw new InvalidOperationException(
+                $"Player {player.NetId} attempted to choose option index {optionIndex} in event {eventForPlayer.Id}, but there were only {eventForPlayer.CurrentOptions.Count} options available!");
+        }
+
+        EventOption eventOption = eventForPlayer.CurrentOptions[optionIndex];
+        AccessTools.Method(typeof(EventSynchronizer), "SaveEventOptionToHistory")
+            ?.Invoke(__instance, new object[] { player, eventOption });
+
+        TaskHelper.RunSafely(ExecuteSharedOptionSeriallyAsync(player, eventOption));
+        return false;
+    }
+
+    private static async Task ExecuteSharedOptionSeriallyAsync(Player player, EventOption eventOption)
+    {
+        await SharedEventChoiceSemaphore.WaitAsync();
+        try
+        {
+            if (!RunManager.Instance.IsInProgress)
+            {
+                return;
+            }
+
+            LocalMultiControlRuntime.SwitchControlledPlayerTo(player.NetId, "event-shared-serial-execution");
+            LocalMultiControlLogger.Info($"共享事件开始执行角色选项: player={player.NetId}, key={eventOption.TextKey}");
+            await eventOption.Chosen();
+            LocalMultiControlLogger.Info($"共享事件角色选项执行完成: player={player.NetId}, key={eventOption.TextKey}");
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"共享事件角色选项执行失败: player={player.NetId}, key={eventOption.TextKey}, error={exception.Message}");
+        }
+        finally
+        {
+            SharedEventChoiceSemaphore.Release();
+        }
     }
 }
