@@ -24,6 +24,11 @@ internal static class NEventRoomPatch
             return;
         }
 
+        if (TryAutoSwitchToNextPendingEvent(eventModel))
+        {
+            return;
+        }
+
         if (!LocalSelfCoopContext.ShouldQueueEventAutoSwitchAfterEventState(eventModel))
         {
             return;
@@ -42,6 +47,46 @@ internal static class NEventRoomPatch
                 LocalMultiControlRuntime.TryRunPendingEventAutoSwitch("event-auto-next");
             }
         }).CallDeferred();
+    }
+
+    private static bool TryAutoSwitchToNextPendingEvent(EventModel eventModel)
+    {
+        if (LocalSelfCoopContext.EventSyncAllEnabled || RunManager.Instance.EventSynchronizer.IsShared)
+        {
+            return false;
+        }
+
+        if (eventModel.Owner == null || !eventModel.IsFinished)
+        {
+            return false;
+        }
+
+        EventModel? pendingEvent = RunManager.Instance.EventSynchronizer.Events.FirstOrDefault((candidate) =>
+            candidate.Owner != null &&
+            candidate.Owner.NetId != eventModel.Owner.NetId &&
+            !candidate.IsFinished);
+        if (pendingEvent?.Owner == null)
+        {
+            return false;
+        }
+
+        if (NOverlayStack.Instance?.ScreenCount > 0)
+        {
+            LocalMultiControlLogger.Info($"事件已完成，等待弹窗关闭后自动切换到下一位: {eventModel.Owner.NetId} -> {pendingEvent.Owner.NetId}");
+            return false;
+        }
+
+        Callable.From(delegate
+        {
+            if (!RunManager.Instance.IsInProgress)
+            {
+                return;
+            }
+
+            LocalMultiControlLogger.Info($"事件自动切换到下一位待选角色: {eventModel.Owner.NetId} -> {pendingEvent.Owner.NetId}");
+            LocalMultiControlRuntime.SwitchControlledPlayerTo(pendingEvent.Owner.NetId, "event-finished-next-player");
+        }).CallDeferred();
+        return true;
     }
 }
 
