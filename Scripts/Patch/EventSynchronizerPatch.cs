@@ -96,12 +96,6 @@ internal static class EventSynchronizerPatch
             return;
         }
 
-        if (!LocalSelfCoopContext.EventSyncAllEnabled)
-        {
-            TrySwitchToNextPendingSharedVotePlayer(synchronizer);
-            return;
-        }
-
         try
         {
             INetGameService? netService = AccessTools.Field(typeof(EventSynchronizer), "_netService")?.GetValue(synchronizer) as INetGameService;
@@ -119,6 +113,13 @@ internal static class EventSynchronizerPatch
 
             int sharedCount = Math.Min(playerCollection.Players.Count, votes.Count);
             if (sharedCount < 2)
+            {
+                return;
+            }
+
+            // 若共享事件已结算并清空投票（例如最后一票触发了原版结算），这里直接跳过，
+            // 避免再次写票导致重复触发并把控制上下文切乱。
+            if (!votes.Take(sharedCount).Any((vote) => vote.HasValue))
             {
                 return;
             }
@@ -166,56 +167,6 @@ internal static class EventSynchronizerPatch
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"共享事件自动补票失败: {exception.Message}");
-        }
-    }
-
-    private static void TrySwitchToNextPendingSharedVotePlayer(EventSynchronizer synchronizer)
-    {
-        try
-        {
-            IPlayerCollection? playerCollection = AccessTools.Field(typeof(EventSynchronizer), "_playerCollection")?.GetValue(synchronizer) as IPlayerCollection;
-            List<uint?>? votes = AccessTools.Field(typeof(EventSynchronizer), "_playerVotes")?.GetValue(synchronizer) as List<uint?>;
-            if (playerCollection == null || votes == null)
-            {
-                return;
-            }
-
-            int sharedCount = Math.Min(playerCollection.Players.Count, votes.Count);
-            if (sharedCount < 2)
-            {
-                return;
-            }
-
-            List<Player> players = playerCollection.Players.Take(sharedCount).ToList();
-            ulong currentPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId
-                ?? LocalContext.NetId
-                ?? LocalSelfCoopContext.PrimaryPlayerId;
-            int currentSlot = players.FindIndex((player) => player.NetId == currentPlayerId);
-            if (currentSlot < 0)
-            {
-                currentSlot = 0;
-            }
-
-            for (int step = 1; step < sharedCount; step++)
-            {
-                int slot = (currentSlot + step) % sharedCount;
-                if (votes[slot].HasValue)
-                {
-                    continue;
-                }
-
-                ulong targetPlayerId = players[slot].NetId;
-                Callable.From(delegate
-                {
-                    LocalMultiControlRuntime.SwitchControlledPlayerTo(targetPlayerId, "event-shared-next-player");
-                }).CallDeferred();
-                LocalMultiControlLogger.Info($"共享事件投票已切换到下一位待选角色: {currentPlayerId} -> {targetPlayerId}");
-                return;
-            }
-        }
-        catch (Exception exception)
-        {
-            LocalMultiControlLogger.Warn($"共享事件待选角色切换失败: {exception.Message}");
         }
     }
 
