@@ -78,6 +78,37 @@ Start-Process "steam://rungameid/2868840"
 - 默认支持快速发版：若项目根已有最新 `DualRoleAdventure.dll` 与 `DualRoleAdventure.pck`，可直接创建 tag + GitHub Release。
 - 仅在用户明确要求重编译/重导出或产物缺失时，执行完整构建与导出流程。
 
+## 玩家反馈与任务台账（飞书多维表格）
+
+- 任务管理表（AI 与开发台账）：
+  - https://my.feishu.cn/wiki/B17OwI4Ymi8E7skp339cFiRHnnf?table=tblsr2MTjWeiuNZ8&view=vewXxBNTOK
+- 玩家问卷表单（玩家可直接提交 Bug/建议）：
+  - https://my.feishu.cn/wiki/B17OwI4Ymi8E7skp339cFiRHnnf?table=tblosEdrnEI0L77n&view=vewLLLwALC
+
+### 字段约定
+
+- 主任务表（`✅任务管理`）新增字段：
+  - `数据来源`：`AI整理` / `玩家问卷`
+  - `开发状态`：`待确认` / `开发中` / `已完成` / `已拒绝`
+  - `任务分类`：`Bug修复` / `需求` / `发布` / `优化`
+  - `提交参考`：对应 git commit 摘要（hash + subject）
+- 玩家问卷表（`📝玩家反馈问卷`）核心字段：
+  - `反馈标题`
+  - `反馈详情`
+  - `反馈分类`（Bug/建议）
+  - `来源`（默认玩家问卷）
+  - `开发状态`
+  - `提交时间`
+  - `联系方式`（选填）
+  - `游戏版本`
+  - `复现步骤`
+
+### 使用建议
+
+1. 玩家通过“玩家问卷表单”提交后，先将 `开发状态` 标成 `待确认`。
+2. 评审后将确认项同步到主任务表，`数据来源` 填 `玩家问卷`。
+3. 开发完成时同步更新两表状态，保证“玩家视角”和“开发视角”可追踪。
+
 ## 修改日志（重要里程碑）
 
 详细记录见 [CHANGELOG.md](./CHANGELOG.md)。
