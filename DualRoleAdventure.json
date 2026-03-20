@@ -1,0 +1,11 @@
+{
+  "id": "DualRoleAdventure",
+  "name": "DualRoleAdventure",
+  "author": "LocalMultiControl",
+  "description": "实现联机转本地多控能力，使单机支持多角色/多输入控制",
+  "version": "v1.02",
+  "has_pck": true,
+  "has_dll": true,
+  "dependencies": [],
+  "affects_gameplay": true
+}

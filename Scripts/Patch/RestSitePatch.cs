@@ -24,12 +24,7 @@ internal static class RestSiteOptionPatch
     [HarmonyPostfix]
     private static void Postfix(ref List<RestSiteOption> __result)
     {
-        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
-        {
-            return;
-        }
-
-        __result.RemoveAll((option) => option is MendRestSiteOption);
+        // 需求调整：休息区保留原多人联机选项，不再删减。
     }
 }
 
@@ -39,42 +34,7 @@ internal static class HealRestSiteOptionPatch
     [HarmonyPrefix]
     private static bool Prefix(HealRestSiteOption __instance, ref Task<bool> __result)
     {
-        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
-        {
-            return true;
-        }
-
-        __result = HealAllPlayersAsync(__instance);
-        return false;
-    }
-
-    private static async Task<bool> HealAllPlayersAsync(HealRestSiteOption option)
-    {
-        Player? owner = AccessTools.Field(typeof(RestSiteOption), "<Owner>k__BackingField")?.GetValue(option) as Player;
-        if (owner == null)
-        {
-            return false;
-        }
-
-        if (owner.RunState == null || owner.RunState.Players.Count <= 1)
-        {
-            await HealRestSiteOption.ExecuteRestSiteHeal(owner, isMimicked: false);
-            return true;
-        }
-
-        await HealRestSiteOption.ExecuteRestSiteHeal(owner, isMimicked: false);
-        foreach (Player player in owner.RunState.Players)
-        {
-            if (player.NetId == owner.NetId)
-            {
-                continue;
-            }
-
-            await CreatureCmd.Heal(player.Creature, HealRestSiteOption.GetHealAmount(player));
-            await Hook.AfterRestSiteHeal(player.RunState, player, isMimicked: true);
-        }
-
-        LocalMultiControlLogger.Info("休息区恢复已改为全体恢复。");
+        // 需求调整：休息区回血按角色独立结算，不再拦截为全体恢复。
         return true;
     }
 }
@@ -342,6 +302,52 @@ internal static class NRestSiteButtonSelectGuardPatch
         }
 
         return -1;
+    }
+}
+
+[HarmonyPatch(typeof(NRestSiteRoom), nameof(NRestSiteRoom._Ready))]
+internal static class NRestSiteRoomReadyPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(NRestSiteRoom __instance)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
+        {
+            return;
+        }
+
+        Callable.From(delegate
+        {
+            EnsurePrimaryPlayerOptionsVisible(__instance, attempt: 0);
+        }).CallDeferred();
+    }
+
+    private static void EnsurePrimaryPlayerOptionsVisible(NRestSiteRoom room, int attempt)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode || !RunManager.Instance.IsInProgress)
+        {
+            return;
+        }
+
+        if (NRestSiteRoom.Instance != room)
+        {
+            return;
+        }
+
+        LocalMultiControlRuntime.SwitchControlledPlayerTo(LocalSelfCoopContext.PrimaryPlayerId, $"rest-site-enter-primary-{attempt}");
+        RestSiteUiRefreshUtil.TryRefresh($"rest-site-enter-primary-{attempt}");
+
+        int optionCount = room.Options.Count;
+        if (optionCount > 0 || attempt >= 3)
+        {
+            LocalMultiControlLogger.Info($"休息区进入后选项检查: attempt={attempt}, options={optionCount}");
+            return;
+        }
+
+        Callable.From(delegate
+        {
+            EnsurePrimaryPlayerOptionsVisible(room, attempt + 1);
+        }).CallDeferred();
     }
 }
 

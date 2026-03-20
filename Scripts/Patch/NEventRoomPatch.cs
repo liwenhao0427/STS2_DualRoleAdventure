@@ -4,6 +4,7 @@ using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Runs;
@@ -14,9 +15,16 @@ namespace LocalMultiControl.Scripts.Patch;
 internal static class NEventRoomPatch
 {
     [HarmonyPostfix]
-    private static void Postfix(EventModel eventModel)
+    private static void Postfix(NEventRoom __instance, EventModel eventModel)
     {
+        LocalEventSyncToggleUi.Refresh(__instance);
+
         if (LocalSelfCoopContext.UseSingleEventFlow)
+        {
+            return;
+        }
+
+        if (TryAutoSwitchToNextPendingEvent(eventModel))
         {
             return;
         }
@@ -40,6 +48,66 @@ internal static class NEventRoomPatch
             }
         }).CallDeferred();
     }
+
+    private static bool TryAutoSwitchToNextPendingEvent(EventModel eventModel)
+    {
+        if (LocalSelfCoopContext.EventSyncAllEnabled || RunManager.Instance.EventSynchronizer.IsShared)
+        {
+            return false;
+        }
+
+        if (eventModel.Owner == null || !eventModel.IsFinished)
+        {
+            return false;
+        }
+
+        EventModel? pendingEvent = RunManager.Instance.EventSynchronizer.Events.FirstOrDefault((candidate) =>
+            candidate.Owner != null &&
+            candidate.Owner.NetId != eventModel.Owner.NetId &&
+            !candidate.IsFinished);
+        if (pendingEvent?.Owner == null)
+        {
+            return false;
+        }
+
+        if (NOverlayStack.Instance?.ScreenCount > 0)
+        {
+            LocalMultiControlLogger.Info($"事件已完成，等待弹窗关闭后自动切换到下一位: {eventModel.Owner.NetId} -> {pendingEvent.Owner.NetId}");
+            return false;
+        }
+
+        Callable.From(delegate
+        {
+            if (!RunManager.Instance.IsInProgress)
+            {
+                return;
+            }
+
+            LocalMultiControlLogger.Info($"事件自动切换到下一位待选角色: {eventModel.Owner.NetId} -> {pendingEvent.Owner.NetId}");
+            LocalMultiControlRuntime.SwitchControlledPlayerTo(pendingEvent.Owner.NetId, "event-finished-next-player");
+        }).CallDeferred();
+        return true;
+    }
+}
+
+[HarmonyPatch(typeof(NEventRoom), nameof(NEventRoom._Ready))]
+internal static class NEventRoomReadyPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(NEventRoom __instance)
+    {
+        LocalEventSyncToggleUi.Ensure(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(NEventRoom), nameof(NEventRoom._ExitTree))]
+internal static class NEventRoomExitPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(NEventRoom __instance)
+    {
+        LocalEventSyncToggleUi.Remove(__instance);
+    }
 }
 
 [HarmonyPatch(typeof(NEventRoom), nameof(NEventRoom.OptionButtonClicked))]
@@ -51,6 +119,11 @@ internal static class NEventRoomOptionButtonPatch
         // 已在实机验证：该拦截用于保证涅奥/非共享事件必须双角色都完成后才可 Proceed。
         // 这里是开局主流程稳定点，后续若需调整请先做日志回归，避免回归到“仅一人可选”。
         if (!LocalSelfCoopContext.IsEnabled || !option.IsProceed || !RunManager.Instance.IsInProgress)
+        {
+            return true;
+        }
+
+        if (LocalSelfCoopContext.EventSyncAllEnabled)
         {
             return true;
         }
@@ -83,5 +156,79 @@ internal static class NEventRoomOptionButtonPatch
         LocalMultiControlLogger.Info($"检测到另一名角色尚未完成事件，拦截 Proceed 并切换到 player={pendingEvent.Owner.NetId}");
         LocalMultiControlRuntime.SwitchControlledPlayerTo(pendingEvent.Owner.NetId, "event-proceed-next-player");
         return false;
+    }
+}
+
+internal static class LocalEventSyncToggleUi
+{
+    private const string ToggleButtonName = "LocalEventSyncAllToggleButton";
+
+    internal static void Ensure(NEventRoom room)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !RunManager.Instance.IsInProgress)
+        {
+            return;
+        }
+
+        LocalSelfCoopContext.ResetEventSyncAllToggle("event-room-enter");
+
+        LocalSimpleTextButton? button = room.GetNodeOrNull<LocalSimpleTextButton>(ToggleButtonName);
+        if (button == null)
+        {
+            button = new LocalSimpleTextButton
+            {
+                Name = ToggleButtonName,
+                CustomMinimumSize = new Vector2(220f, 34f),
+                Size = new Vector2(220f, 34f),
+                FontSize = 16,
+                FocusMode = Control.FocusModeEnum.None,
+                AnchorLeft = 1f,
+                AnchorRight = 1f,
+                AnchorTop = 0f,
+                AnchorBottom = 0f,
+                OffsetLeft = -240f,
+                OffsetTop = 16f,
+                OffsetRight = -20f,
+                OffsetBottom = 50f,
+                TopLevel = true,
+                ZIndex = 90
+            };
+            LocalSimpleTextButton localButton = button;
+            button.Connect(
+                NClickableControl.SignalName.Released,
+                Callable.From<NClickableControl>((_) =>
+                {
+                    bool changed = LocalSelfCoopContext.ToggleEventSyncAll("event-sync-all-button");
+                    if (changed)
+                    {
+                        RefreshButtonText(localButton);
+                    }
+                }));
+            room.AddChild(button);
+        }
+
+        RefreshButtonText(button);
+    }
+
+    internal static void Refresh(NEventRoom room)
+    {
+        LocalSimpleTextButton? button = room.GetNodeOrNull<LocalSimpleTextButton>(ToggleButtonName);
+        if (button == null)
+        {
+            return;
+        }
+
+        RefreshButtonText(button);
+    }
+
+    internal static void Remove(NEventRoom room)
+    {
+        LocalSimpleTextButton? button = room.GetNodeOrNull<LocalSimpleTextButton>(ToggleButtonName);
+        button?.QueueFree();
+    }
+
+    private static void RefreshButtonText(LocalSimpleTextButton button)
+    {
+        button.ButtonText = LocalSelfCoopContext.EventSyncAllEnabled ? "同步到全部: 开" : "同步到全部: 关";
     }
 }

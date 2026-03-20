@@ -3,8 +3,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Rooms;
 
 namespace LocalMultiControl.Scripts.Patch;
 
@@ -61,6 +63,12 @@ internal static class PlayerGainGoldMirrorPatch
         if (GoldMirrorSuppressionContext.ShouldSuppressGoldMirror)
         {
             LocalMultiControlLogger.Info($"遗物流程金币跳过镜像: amount={amount}, owner={player.NetId}");
+            return;
+        }
+
+        // 仅保留“战后奖励阶段”的金币同步，避免事件（如涅奥）奖励被同步。
+        if (player.RunState.CurrentRoom is not CombatRoom || CombatManager.Instance.IsInProgress)
+        {
             return;
         }
 

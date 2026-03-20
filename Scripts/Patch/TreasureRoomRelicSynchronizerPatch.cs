@@ -4,7 +4,11 @@ using System.Linq;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
+using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Entities.TreasureRelicPicking;
+using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -13,6 +17,16 @@ namespace LocalMultiControl.Scripts.Patch;
 [HarmonyPatch(typeof(TreasureRoomRelicSynchronizer), nameof(TreasureRoomRelicSynchronizer.OnPicked))]
 internal static class TreasureRoomRelicSynchronizerPatch
 {
+    internal sealed class OverflowCopyPlan
+    {
+        public Player PrimaryPlayer { get; init; } = null!;
+
+        public List<Player> Followers { get; } = new();
+    }
+
+    private static readonly Dictionary<TreasureRoomRelicSynchronizer, OverflowCopyPlan> OverflowPlans = new();
+    private static readonly HashSet<TreasureRoomRelicSynchronizer> SkipAutoSwitchOnce = new();
+
     [HarmonyPostfix]
     private static void Postfix(TreasureRoomRelicSynchronizer __instance, Player player)
     {
@@ -21,7 +35,118 @@ internal static class TreasureRoomRelicSynchronizerPatch
             return;
         }
 
+        if (SkipAutoSwitchOnce.Remove(__instance))
+        {
+            return;
+        }
+
         TryAutoSwitchToNextUnpickedPlayer(__instance, player.NetId, "treasure-picked");
+    }
+
+    [HarmonyPrefix]
+    private static bool Prefix(TreasureRoomRelicSynchronizer __instance, Player player, int index)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
+        {
+            return true;
+        }
+
+        if (!TryGetOverflowPlan(__instance, out OverflowCopyPlan? plan) || plan == null)
+        {
+            return true;
+        }
+
+        try
+        {
+            List<int?>? votes = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_votes")?.GetValue(__instance) as List<int?>;
+            IPlayerCollection? players = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_playerCollection")?.GetValue(__instance) as IPlayerCollection;
+            IReadOnlyList<RelicModel>? currentRelics = __instance.CurrentRelics;
+            if (votes == null || players == null || currentRelics == null || currentRelics.Count == 0)
+            {
+                return false;
+            }
+
+            if (index < 0 || index >= currentRelics.Count)
+            {
+                LocalMultiControlLogger.Warn($"宝箱投票索引越界，已忽略: index={index}, relicCount={currentRelics.Count}");
+                return false;
+            }
+
+            int sharedCount = Math.Min(votes.Count, players.Players.Count);
+            for (int i = 0; i < sharedCount; i++)
+            {
+                votes[i] = index;
+            }
+
+            InvokeVotesChanged(__instance);
+
+            RelicModel selectedRelic = currentRelics[index];
+            List<RelicPickingResult> results = new()
+            {
+                new RelicPickingResult
+                {
+                    type = RelicPickingResultType.OnlyOnePlayerVoted,
+                    relic = selectedRelic,
+                    player = player
+                }
+            };
+
+            InvokeRelicsAwarded(__instance, results);
+            GrantFollowerCopies(plan, selectedRelic, player);
+            AccessTools.Method(typeof(TreasureRoomRelicSynchronizer), "EndRelicVoting")?.Invoke(__instance, null);
+            SkipAutoSwitchOnce.Add(__instance);
+            RemoveOverflowPlan(__instance);
+            LocalMultiControlLogger.Info(
+                $"宝箱5人以上快速结算：player={player.NetId}, relic={selectedRelic.Id.Entry}，已同步到其余角色并结束房间。");
+            return false;
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"宝箱溢出投票接管失败，回退原流程: {exception.Message}");
+            RemoveOverflowPlan(__instance);
+            return true;
+        }
+    }
+
+    private static void GrantFollowerCopies(OverflowCopyPlan plan, RelicModel selectedRelic, Player sourcePlayer)
+    {
+        IEnumerable<Player> targets = new[] { plan.PrimaryPlayer }
+            .Concat(plan.Followers)
+            .Where((candidate) => candidate.NetId != sourcePlayer.NetId);
+        foreach (Player follower in targets)
+        {
+            RelicModel copiedRelic = selectedRelic.ToMutable();
+            TaskHelper.RunSafely(RelicCmd.Obtain(copiedRelic, follower));
+            LocalMultiControlLogger.Info($"宝箱5人以上遗物同步: source={sourcePlayer.NetId}, target={follower.NetId}, relic={copiedRelic.Id.Entry}");
+        }
+    }
+
+    private static void InvokeVotesChanged(TreasureRoomRelicSynchronizer synchronizer)
+    {
+        Action? callback = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "VotesChanged")?.GetValue(synchronizer) as Action;
+        callback?.Invoke();
+    }
+
+    private static void InvokeRelicsAwarded(TreasureRoomRelicSynchronizer synchronizer, List<RelicPickingResult> results)
+    {
+        Action<List<RelicPickingResult>>? callback =
+            AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "RelicsAwarded")?.GetValue(synchronizer) as Action<List<RelicPickingResult>>;
+        callback?.Invoke(results);
+    }
+
+    internal static void SetOverflowPlan(TreasureRoomRelicSynchronizer synchronizer, OverflowCopyPlan plan)
+    {
+        OverflowPlans[synchronizer] = plan;
+    }
+
+    private static bool TryGetOverflowPlan(TreasureRoomRelicSynchronizer synchronizer, out OverflowCopyPlan? plan)
+    {
+        return OverflowPlans.TryGetValue(synchronizer, out plan);
+    }
+
+    internal static void RemoveOverflowPlan(TreasureRoomRelicSynchronizer synchronizer)
+    {
+        OverflowPlans.Remove(synchronizer);
     }
 
     internal static bool TryAutoSwitchToNextUnpickedPlayer(TreasureRoomRelicSynchronizer synchronizer, ulong currentPlayerId, string source)
@@ -88,6 +213,8 @@ internal static class TreasureRoomRelicSynchronizerPatch
 [HarmonyPatch(typeof(TreasureRoomRelicSynchronizer), nameof(TreasureRoomRelicSynchronizer.BeginRelicPicking))]
 internal static class TreasureRoomRelicSynchronizerBeginPatch
 {
+    private const int MAX_MANUAL_RELIC_OPTIONS = 4;
+
     [HarmonyPostfix]
     private static void Postfix(TreasureRoomRelicSynchronizer __instance)
     {
@@ -99,17 +226,45 @@ internal static class TreasureRoomRelicSynchronizerBeginPatch
         try
         {
             List<int?>? votes = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_votes")?.GetValue(__instance) as List<int?>;
-            if (votes == null || votes.Count <= 1)
+            IReadOnlyList<Player>? players = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_playerCollection")?.GetValue(__instance) is IPlayerCollection playerCollection
+                ? playerCollection.Players
+                : null;
+            IReadOnlyList<RelicModel>? currentRelics = __instance.CurrentRelics;
+            if (votes == null || players == null || votes.Count <= 1 || currentRelics == null || currentRelics.Count <= 1)
             {
                 return;
             }
 
-            for (int i = 0; i < votes.Count; i++)
+            int sharedCount = Math.Min(votes.Count, players.Count);
+            if (sharedCount <= MAX_MANUAL_RELIC_OPTIONS)
             {
-                votes[i] = null;
+                for (int i = 0; i < sharedCount; i++)
+                {
+                    votes[i] = null;
+                }
+
+                TreasureRoomRelicSynchronizerPatch.RemoveOverflowPlan(__instance);
+                LocalMultiControlLogger.Info("宝箱已禁用自动代投，改为逐角色手动选择。");
+                return;
             }
 
-            LocalMultiControlLogger.Info("宝箱已禁用自动代投，改为逐角色手动选择。");
+            Player primaryPlayer = players[0];
+            TreasureRoomRelicSynchronizerPatch.OverflowCopyPlan plan = new()
+            {
+                PrimaryPlayer = primaryPlayer
+            };
+
+            for (int i = 0; i < sharedCount; i++)
+            {
+                votes[i] = null;
+                if (i > 0)
+                {
+                    plan.Followers.Add(players[i]);
+                }
+            }
+
+            TreasureRoomRelicSynchronizerPatch.SetOverflowPlan(__instance, plan);
+            LocalMultiControlLogger.Info($"宝箱5人以上特判已启用：仅1号位参与事件，其余{plan.Followers.Count}人将直接复制1号位遗物。");
         }
         catch (Exception exception)
         {

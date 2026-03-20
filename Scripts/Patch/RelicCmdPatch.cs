@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
@@ -15,13 +16,7 @@ namespace LocalMultiControl.Scripts.Patch;
 [HarmonyPatch(typeof(RelicCmd), nameof(RelicCmd.Obtain), new[] { typeof(RelicModel), typeof(Player), typeof(int) })]
 internal static class RelicCmdObtainPatch
 {
-    private static readonly HashSet<RelicModel> NonSharedTreasureRelics = new(ReferenceEqualityComparer.Instance);
     private static readonly HashSet<RelicModel> NonSharedChainRelics = new(ReferenceEqualityComparer.Instance);
-
-    internal static bool TryConsumeNonSharedTreasureRelic(RelicModel relic)
-    {
-        return NonSharedTreasureRelics.Remove(relic);
-    }
 
     internal static bool TryConsumeNonSharedChainRelic(RelicModel relic)
     {
@@ -64,10 +59,9 @@ internal static class RelicCmdObtainPatch
             return obtainedRelic;
         }
 
-        if (player.RunState.CurrentRoom is TreasureRoom)
+        // 仅保留“战后奖励阶段”的遗物同步，避免事件（如涅奥）奖励被同步。
+        if (player.RunState.CurrentRoom is not CombatRoom || CombatManager.Instance.IsInProgress)
         {
-            NonSharedTreasureRelics.Add(obtainedRelic);
-            LocalMultiControlLogger.Info($"宝箱遗物按独立策略处理，不做共享镜像: relic={obtainedRelic.Id.Entry}, owner={player.NetId}");
             return obtainedRelic;
         }
 
@@ -126,17 +120,18 @@ internal static class RelicCmdRemovePatch
     private static async Task MirrorRemoveForOtherLocalPlayersAsync(RelicModel removedRelic, Task originalTask)
     {
         await originalTask;
-        if (RelicCmdObtainPatch.TryConsumeNonSharedTreasureRelic(removedRelic))
-        {
-            return;
-        }
-
         if (RelicCmdObtainPatch.TryConsumeNonSharedChainRelic(removedRelic))
         {
             return;
         }
 
         if (!LocalSelfCoopContext.IsEnabled || removedRelic.Owner?.RunState == null)
+        {
+            return;
+        }
+
+        // 仅在战后奖励阶段产生的共享遗物链路中保留同步移除。
+        if (removedRelic.Owner.RunState.CurrentRoom is not CombatRoom || CombatManager.Instance.IsInProgress)
         {
             return;
         }
