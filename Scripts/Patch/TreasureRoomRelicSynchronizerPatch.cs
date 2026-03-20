@@ -84,12 +84,11 @@ internal static class TreasureRoomRelicSynchronizerPatch
             List<RelicPickingResult> results = BuildOverflowResults(plan, player, selectedRelic);
 
             InvokeRelicsAwarded(__instance, results);
-            GrantFollowerCopies(plan, selectedRelic, player);
             AccessTools.Method(typeof(TreasureRoomRelicSynchronizer), "EndRelicVoting")?.Invoke(__instance, null);
             SkipAutoSwitchOnce.Add(__instance);
             RemoveOverflowPlan(__instance);
             LocalMultiControlLogger.Info(
-                $"宝箱5人以上快速结算：player={player.NetId}, relic={selectedRelic.Id.Entry}，已同步到其余角色并结束房间。");
+                $"宝箱5人以上快速结算：player={player.NetId}, relic={selectedRelic.Id.Entry}，已按结算结果发放并结束房间。");
             return false;
         }
         catch (Exception exception)
@@ -132,26 +131,6 @@ internal static class TreasureRoomRelicSynchronizerPatch
         }
 
         return results;
-    }
-
-    private static void GrantFollowerCopies(OverflowCopyPlan plan, RelicModel selectedRelic, Player sourcePlayer)
-    {
-        IEnumerable<Player> targets = new[] { plan.PrimaryPlayer }
-            .Concat(plan.Followers)
-            .Where((candidate) => candidate.NetId != sourcePlayer.NetId);
-        foreach (Player follower in targets)
-        {
-            if (follower.GetRelicById(selectedRelic.Id) != null)
-            {
-                LocalMultiControlLogger.Info(
-                    $"宝箱遗物复制已跳过（目标已拥有）: source={sourcePlayer.NetId}, target={follower.NetId}, relic={selectedRelic.Id.Entry}");
-                continue;
-            }
-
-            RelicModel copiedRelic = selectedRelic.ToMutable();
-            TaskHelper.RunSafely(RelicCmd.Obtain(copiedRelic, follower));
-            LocalMultiControlLogger.Info($"宝箱5人以上遗物同步: source={sourcePlayer.NetId}, target={follower.NetId}, relic={copiedRelic.Id.Entry}");
-        }
     }
 
     private static void InvokeVotesChanged(TreasureRoomRelicSynchronizer synchronizer)
