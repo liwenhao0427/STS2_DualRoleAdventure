@@ -876,6 +876,7 @@ internal static class LocalMultiControlRuntime
             RunManager.Instance.RestSiteSynchronizer.LocalOptionHovered(null);
             AccessTools.Field(typeof(NRestSiteRoom), "_lastFocused")?.SetValue(restSiteRoom, null);
             AccessTools.Method(typeof(NRestSiteRoom), "UpdateRestSiteOptions")?.Invoke(restSiteRoom, null);
+            RestSiteUiRefreshUtil.EnsureChoicesVisibleForLocalPlayer(restSiteRoom, $"runtime-switch-{playerId}");
             LocalMultiControlLogger.Info($"休息区UI已刷新到当前角色: {playerId}");
         }
         catch (Exception exception)

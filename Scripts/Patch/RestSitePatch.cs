@@ -270,6 +270,7 @@ internal static class RestSiteUiRefreshUtil
             RunManager.Instance.RestSiteSynchronizer.LocalOptionHovered(null);
             AccessTools.Field(typeof(NRestSiteRoom), "_lastFocused")?.SetValue(room, null);
             AccessTools.Method(typeof(NRestSiteRoom), "UpdateRestSiteOptions")?.Invoke(room, null);
+            EnsureChoicesVisibleForLocalPlayer(room, source);
             LocalMultiControlLogger.Info($"休息区选项已刷新: source={source}, player={LocalContext.NetId?.ToString() ?? "null"}");
             return true;
         }
@@ -277,6 +278,37 @@ internal static class RestSiteUiRefreshUtil
         {
             LocalMultiControlLogger.Warn($"休息区选项刷新失败: source={source}, error={exception.Message}");
             return false;
+        }
+    }
+
+    internal static void EnsureChoicesVisibleForLocalPlayer(NRestSiteRoom room, string source)
+    {
+        try
+        {
+            int localOptionCount = RunManager.Instance.RestSiteSynchronizer.GetLocalOptions().Count;
+            if (localOptionCount <= 0)
+            {
+                return;
+            }
+
+            Control? choicesScreen = AccessTools.Field(typeof(NRestSiteRoom), "_choicesScreen")?.GetValue(room) as Control;
+            if (choicesScreen != null)
+            {
+                Color modulate = choicesScreen.Modulate;
+                if (modulate.A < 0.99f)
+                {
+                    modulate.A = 1f;
+                    choicesScreen.Modulate = modulate;
+                }
+            }
+
+            AccessTools.Method(typeof(NRestSiteRoom), "EnableOptions")?.Invoke(room, null);
+            AccessTools.Method(typeof(NRestSiteRoom), "AnimateDescriptionUp")?.Invoke(room, null);
+            LocalMultiControlLogger.Info($"休息区选项可见性已恢复: source={source}, options={localOptionCount}");
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"恢复休息区选项可见性失败: source={source}, error={exception.Message}");
         }
     }
 }
