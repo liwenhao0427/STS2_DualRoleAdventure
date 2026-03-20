@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [v1.05] - 2026-03-20
+
+### Fixed
+- 移除宝箱补丁中的重复复制链路，避免同一次结算出现二次复制。
+- 宝箱遗物复制新增“已拥有去重”保护，减少重复遗物写入风险。
+- 藏宝图结算改为按全队统一处理，并补齐瓦库流程中的自动视角切换。
+
 ## [v0.1.9] - 2026-03-15
 
 ### Fixed
@@ -40,7 +47,8 @@
 - 建立本地多控最小可用闭环。
 - 基础输入切换、关键同步链路与核心补丁框架落地。
 
-[Unreleased]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/compare/v1.05...HEAD
+[v1.05]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v1.05
 [v0.1.9]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v0.1.9
 [v0.1.3]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v0.1.3
 [v0.1.2]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v0.1.2
