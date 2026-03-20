@@ -141,6 +141,13 @@ internal static class TreasureRoomRelicSynchronizerPatch
             .Where((candidate) => candidate.NetId != sourcePlayer.NetId);
         foreach (Player follower in targets)
         {
+            if (follower.GetRelicById(selectedRelic.Id) != null)
+            {
+                LocalMultiControlLogger.Info(
+                    $"宝箱遗物复制已跳过（目标已拥有）: source={sourcePlayer.NetId}, target={follower.NetId}, relic={selectedRelic.Id.Entry}");
+                continue;
+            }
+
             RelicModel copiedRelic = selectedRelic.ToMutable();
             TaskHelper.RunSafely(RelicCmd.Obtain(copiedRelic, follower));
             LocalMultiControlLogger.Info($"宝箱5人以上遗物同步: source={sourcePlayer.NetId}, target={follower.NetId}, relic={copiedRelic.Id.Entry}");
