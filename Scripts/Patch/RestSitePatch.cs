@@ -289,10 +289,34 @@ internal static class NRestSiteRoomReadyPatch
             return;
         }
 
+        ShowLargePartyManualSwitchHint(__instance);
+
         Callable.From(delegate
         {
             EnsurePrimaryPlayerOptionsVisible(__instance, attempt: 0, loadingSettledFramesLeft: 2, switchedToPrimary: false);
         }).CallDeferred();
+    }
+
+    private static void ShowLargePartyManualSwitchHint(NRestSiteRoom room)
+    {
+        IRunState? runState = AccessTools.Field(typeof(NRestSiteRoom), "_runState")?.GetValue(room) as IRunState;
+        if (runState == null)
+        {
+            return;
+        }
+
+        if (runState.Players.Count <= 4)
+        {
+            return;
+        }
+
+        Callable.From(delegate
+        {
+            NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create("休息区提示：若未显示选项，请先按 R 或 ] 手动切换一次角色"));
+        }).CallDeferred();
+
+        LocalMultiControlLogger.Warn(
+            $"[待修复] 休息区5人以上首帧可能不显示选项，已提示玩家先手动切换角色。players={runState.Players.Count}");
     }
 
     private static void EnsurePrimaryPlayerOptionsVisible(
