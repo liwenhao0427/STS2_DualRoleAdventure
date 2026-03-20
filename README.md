@@ -82,6 +82,8 @@ Start-Process "steam://rungameid/2868840"
 
 - 任务管理表（AI 与开发台账）：
   - https://my.feishu.cn/wiki/B17OwI4Ymi8E7skp339cFiRHnnf?table=tblsr2MTjWeiuNZ8&view=vewXxBNTOK
+- 玩家反馈处理结果（开发侧结果看板）：
+  - https://my.feishu.cn/wiki/B17OwI4Ymi8E7skp339cFiRHnnf?table=tblosEdrnEI0L77n&view=vewjPpNXxV
 - 玩家问卷表单（当前使用，玩家可直接提交 Bug/建议）：
   - https://my.feishu.cn/share/base/form/shrcn5DNr4nXrBDHMkLrHaEaVyh
 
