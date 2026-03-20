@@ -43,6 +43,7 @@ internal static class LocalWakuuRelicRuntime
             return;
         }
 
+        EnsureWakuuPerspective(player, "before-play-phase");
         relic.Flash();
 
         bool reachedPlayLimit;
@@ -148,6 +149,7 @@ internal static class LocalWakuuRelicRuntime
                 return;
             }
 
+            EnsureWakuuPerspective(player, source);
             LocalContext.NetId = player.NetId;
             LocalSelfCoopContext.NetService?.SetCurrentSenderId(player.NetId);
 
@@ -186,5 +188,19 @@ internal static class LocalWakuuRelicRuntime
             TargetType.AnyPlayer => owner.Creature,
             _ => null
         };
+    }
+
+    private static void EnsureWakuuPerspective(Player player, string source)
+    {
+        ulong currentControlledPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId
+            ?? LocalContext.NetId
+            ?? player.NetId;
+        if (currentControlledPlayerId == player.NetId)
+        {
+            return;
+        }
+
+        LocalMultiControlLogger.Info($"瓦库自动操作前切换视角: {currentControlledPlayerId} -> {player.NetId}, source={source}");
+        LocalMultiControlRuntime.SwitchControlledPlayerTo(player.NetId, $"wakuu-{source}");
     }
 }

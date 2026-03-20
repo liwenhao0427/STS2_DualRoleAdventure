@@ -403,7 +403,7 @@ internal static class LocalMultiControlRuntime
         LocalMerchantInventoryRuntime.RefreshShopRoomForPlayer(currentControlledPlayerId.Value);
         EnsureTreasureCursorVisibleAfterSwitch(source);
         LocalMultiControlLogger.Info($"控制上下文已更新: {previousNetId?.ToString() ?? "null"} -> {currentControlledPlayerId.Value}, source={source}");
-        if (source != "run-launched")
+        if (source != "run-launched" && !source.StartsWith("wakuu-", StringComparison.Ordinal))
         {
             string slotLabel = LocalSelfCoopContext.GetSlotLabel(currentControlledPlayerId.Value);
             NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"控制角色: 槽位{slotLabel}"));
