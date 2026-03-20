@@ -81,15 +81,7 @@ internal static class TreasureRoomRelicSynchronizerPatch
             InvokeVotesChanged(__instance);
 
             RelicModel selectedRelic = currentRelics[index];
-            List<RelicPickingResult> results = new()
-            {
-                new RelicPickingResult
-                {
-                    type = RelicPickingResultType.OnlyOnePlayerVoted,
-                    relic = selectedRelic,
-                    player = player
-                }
-            };
+            List<RelicPickingResult> results = BuildOverflowResults(plan, player, selectedRelic);
 
             InvokeRelicsAwarded(__instance, results);
             GrantFollowerCopies(plan, selectedRelic, player);
@@ -106,6 +98,40 @@ internal static class TreasureRoomRelicSynchronizerPatch
             RemoveOverflowPlan(__instance);
             return true;
         }
+    }
+
+    private static List<RelicPickingResult> BuildOverflowResults(OverflowCopyPlan plan, Player sourcePlayer, RelicModel selectedRelic)
+    {
+        List<Player> orderedPlayers = new();
+        HashSet<ulong> seenPlayerIds = new();
+
+        void AddPlayer(Player candidate)
+        {
+            if (seenPlayerIds.Add(candidate.NetId))
+            {
+                orderedPlayers.Add(candidate);
+            }
+        }
+
+        AddPlayer(sourcePlayer);
+        AddPlayer(plan.PrimaryPlayer);
+        foreach (Player follower in plan.Followers)
+        {
+            AddPlayer(follower);
+        }
+
+        List<RelicPickingResult> results = new(orderedPlayers.Count);
+        foreach (Player participant in orderedPlayers)
+        {
+            results.Add(new RelicPickingResult
+            {
+                type = RelicPickingResultType.OnlyOnePlayerVoted,
+                relic = selectedRelic,
+                player = participant
+            });
+        }
+
+        return results;
     }
 
     private static void GrantFollowerCopies(OverflowCopyPlan plan, RelicModel selectedRelic, Player sourcePlayer)

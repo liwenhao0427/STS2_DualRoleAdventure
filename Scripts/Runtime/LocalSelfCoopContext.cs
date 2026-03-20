@@ -33,12 +33,9 @@ internal static class LocalSelfCoopContext
     private static ulong? _pendingEventAutoSwitchPlayerId;
 
     private static bool _eventAutoSwitchPending;
-    private static bool _eventSyncAllEnabled;
-
     public static bool UseSingleAdventureMode => true;
 
     public static bool UseSingleEventFlow => false;
-    public static bool EventSyncAllEnabled => _eventSyncAllEnabled;
 
     public static int DesiredLocalPlayerCount => _desiredLocalPlayerCount;
 
@@ -184,7 +181,6 @@ internal static class LocalSelfCoopContext
     {
         IsEnabled = true;
         NetService = netService;
-        _eventSyncAllEnabled = false;
         CurrentLobbyEditingPlayerId = PrimaryPlayerId;
         ActiveCharacterSelectScreen = null;
         netService.SetCurrentSenderId(CurrentLobbyEditingPlayerId);
@@ -205,30 +201,7 @@ internal static class LocalSelfCoopContext
         ActiveCharacterSelectScreen = null;
         _pendingEventAutoSwitchPlayerId = null;
         _eventAutoSwitchPending = false;
-        _eventSyncAllEnabled = false;
         LocalMultiControlLogger.Info($"鏈湴澶氭帶妯″紡宸插叧闂紝鍘熷洜: {reason}");
-    }
-
-    public static void ResetEventSyncAllToggle(string source)
-    {
-        SetEventSyncAllEnabled(enabled: false, source);
-    }
-
-    public static bool ToggleEventSyncAll(string source)
-    {
-        return SetEventSyncAllEnabled(!_eventSyncAllEnabled, source);
-    }
-
-    public static bool SetEventSyncAllEnabled(bool enabled, string source)
-    {
-        if (_eventSyncAllEnabled == enabled)
-        {
-            return false;
-        }
-
-        _eventSyncAllEnabled = enabled;
-        LocalMultiControlLogger.Info($"事件同步到全部开关已更新: enabled={enabled}, source={source}");
-        return true;
     }
 
     public static bool SwitchLobbyEditingPlayer(bool next)

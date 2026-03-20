@@ -42,9 +42,6 @@ internal static class HealRestSiteOptionPatch
 [HarmonyPatch(typeof(RestSiteSynchronizer), nameof(RestSiteSynchronizer.ChooseLocalOption))]
 internal static class RestSiteSynchronizerChooseLocalOptionPatch
 {
-    private static ulong? _pendingSwitchTargetPlayerId;
-    private static int? _pendingOptionIndex;
-
     [HarmonyPostfix]
     private static void Postfix(RestSiteSynchronizer __instance, int index, ref Task<bool> __result)
     {
@@ -83,36 +80,9 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
                 $"休息区选项执行失败，不触发自动切人: player={localPlayerId.Value}, optionIndex={optionIndex}, snapshot={DescribeOptions(sourceOptionsSnapshot)}");
             return success;
         }
-
-        ulong? nextPlayerId = FindNextPlayerWithAnyOption(synchronizer, localPlayerId.Value);
-        if (!nextPlayerId.HasValue)
-        {
-            LocalMultiControlLogger.Info($"休息区已无待选角色，流程结束: source={localPlayerId.Value}");
-            return success;
-        }
-
-        _pendingSwitchTargetPlayerId = nextPlayerId.Value;
-        _pendingOptionIndex = optionIndex;
-        LocalMultiControlLogger.Info(
-            $"休息区选择成功，已排队切换到下一位待选角色并续传同索引选项: {localPlayerId.Value} -> {nextPlayerId.Value}, optionIndex={optionIndex}, snapshot={DescribeOptions(sourceOptionsSnapshot)}");
+        LocalMultiControlLogger.Info($"休息区选择成功：保持独立手动流程，不自动续传选项。player={localPlayerId.Value}, optionIndex={optionIndex}");
 
         return success;
-    }
-
-    internal static bool TryConsumePendingSwitchTarget(out ulong playerId, out int optionIndex)
-    {
-        if (_pendingSwitchTargetPlayerId.HasValue)
-        {
-            playerId = _pendingSwitchTargetPlayerId.Value;
-            optionIndex = _pendingOptionIndex ?? -1;
-            _pendingSwitchTargetPlayerId = null;
-            _pendingOptionIndex = null;
-            return true;
-        }
-
-        playerId = 0;
-        optionIndex = -1;
-        return false;
     }
 
     private static ulong? ReadLocalPlayerIdFromSynchronizer(RestSiteSynchronizer synchronizer)
@@ -121,35 +91,6 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
         if (fieldValue is ulong fieldPlayerId)
         {
             return fieldPlayerId;
-        }
-
-        return null;
-    }
-
-    private static ulong? FindNextPlayerWithAnyOption(RestSiteSynchronizer synchronizer, ulong sourcePlayerId)
-    {
-        RunState? runState = RunManager.Instance.DebugOnlyGetState();
-        if (runState == null || runState.Players.Count <= 1)
-        {
-            return null;
-        }
-
-        List<Player> players = runState.Players.ToList();
-        int sourceIndex = players.FindIndex((player) => player.NetId == sourcePlayerId);
-        if (sourceIndex < 0)
-        {
-            return null;
-        }
-
-        for (int step = 1; step < players.Count; step++)
-        {
-            int index = (sourceIndex + step) % players.Count;
-            Player candidate = players[index];
-            IReadOnlyList<RestSiteOption> options = synchronizer.GetOptionsForPlayer(candidate.NetId);
-            if (options.Count > 0)
-            {
-                return candidate.NetId;
-            }
         }
 
         return null;
@@ -172,44 +113,7 @@ internal static class NRestSiteRoomAfterSelectingOptionPatch
     [HarmonyPostfix]
     private static void Postfix(ref Task __result)
     {
-        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
-        {
-            return;
-        }
-
-        if (!RestSiteSynchronizerChooseLocalOptionPatch.TryConsumePendingSwitchTarget(out ulong targetPlayerId, out int optionIndex))
-        {
-            return;
-        }
-
-        __result = WaitRoomSelectionAndSwitchAsync(__result, targetPlayerId, optionIndex);
-    }
-
-    private static async Task WaitRoomSelectionAndSwitchAsync(Task originalTask, ulong targetPlayerId, int optionIndex)
-    {
-        await originalTask;
-        await Task.Yield();
-        Callable.From(delegate
-        {
-            LocalMultiControlRuntime.SwitchControlledPlayerTo(targetPlayerId, "rest-site-next-mandatory-choice");
-
-            if (optionIndex < 0)
-            {
-                return;
-            }
-
-            IReadOnlyList<RestSiteOption> targetOptions = RunManager.Instance.RestSiteSynchronizer.GetOptionsForPlayer(targetPlayerId);
-            if (optionIndex >= targetOptions.Count)
-            {
-                LocalMultiControlLogger.Info(
-                    $"休息区续传索引已跳过：目标角色选项数量不足，target={targetPlayerId}, optionIndex={optionIndex}, options={targetOptions.Count}");
-                return;
-            }
-
-            TaskHelper.RunSafely(RunManager.Instance.RestSiteSynchronizer.ChooseLocalOption(optionIndex));
-            LocalMultiControlLogger.Info(
-                $"休息区已为下一位角色续传同索引选项: target={targetPlayerId}, optionIndex={optionIndex}");
-        }).CallDeferred();
+        // 保持独立手动流程：选择后不自动代切人/代选项。
     }
 }
 
