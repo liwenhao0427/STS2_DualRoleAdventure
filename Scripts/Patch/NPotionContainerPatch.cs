@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Potions;
@@ -24,9 +25,10 @@ internal static class NPotionContainerPatch
 
         try
         {
-            if (!TryBindPotionContainerToPrimaryPlayer(__instance, runState))
+            ulong targetPlayerId = LocalContext.NetId ?? LocalSelfCoopContext.PrimaryPlayerId;
+            if (!TryBindPotionContainerToPlayer(__instance, runState, targetPlayerId))
             {
-                LocalMultiControlLogger.Warn("药水栏绑定1号位失败：未找到主角色。");
+                LocalMultiControlLogger.Warn($"药水栏初始化失败：未找到目标玩家 {targetPlayerId}。");
             }
         }
         catch (Exception exception)
@@ -43,12 +45,11 @@ internal static class NPotionContainerPatch
             return true;
         }
 
-        PotionModel resolvedPotion = PlayerPotionMirrorPatch.ResolvePotionForUi(potion);
         List<NPotionHolder>? holders = AccessTools.Field(typeof(NPotionContainer), "_holders")?.GetValue(__instance) as List<NPotionHolder>;
-        NPotionHolder? holder = holders?.FirstOrDefault((node) => node.Potion != null && node.Potion.Model == resolvedPotion);
+        NPotionHolder? holder = holders?.FirstOrDefault((node) => node.Potion != null && node.Potion.Model == potion);
         if (holder?.Potion == null)
         {
-            LocalMultiControlLogger.Warn($"跳过药水动画：当前视图不存在药水 {resolvedPotion.Id.Entry}");
+            LocalMultiControlLogger.Warn($"跳过药水动画：当前视图不存在药水 {potion.Id.Entry}");
             return false;
         }
 
@@ -58,14 +59,19 @@ internal static class NPotionContainerPatch
 
     internal static bool TryBindPotionContainerToPrimaryPlayer(NPotionContainer potionContainer, IRunState runState)
     {
-        MegaCrit.Sts2.Core.Entities.Players.Player? primaryPlayer = runState.GetPlayer(LocalSelfCoopContext.PrimaryPlayerId);
-        if (primaryPlayer == null)
+        return TryBindPotionContainerToPlayer(potionContainer, runState, LocalSelfCoopContext.PrimaryPlayerId);
+    }
+
+    internal static bool TryBindPotionContainerToPlayer(NPotionContainer potionContainer, IRunState runState, ulong playerId)
+    {
+        MegaCrit.Sts2.Core.Entities.Players.Player? targetPlayer = runState.GetPlayer(playerId);
+        if (targetPlayer == null)
         {
             return false;
         }
 
         AccessTools.Method(typeof(NPotionContainer), "DisconnectPlayerEvents")?.Invoke(potionContainer, null);
-        AccessTools.Field(typeof(NPotionContainer), "_player")?.SetValue(potionContainer, primaryPlayer);
+        AccessTools.Field(typeof(NPotionContainer), "_player")?.SetValue(potionContainer, targetPlayer);
         AccessTools.Method(typeof(NPotionContainer), "ConnectPlayerEvents")?.Invoke(potionContainer, null);
 
         List<NPotionHolder>? holders = AccessTools.Field(typeof(NPotionContainer), "_holders")?.GetValue(potionContainer) as List<NPotionHolder>;
@@ -83,14 +89,13 @@ internal static class NPotionContainerPatch
         holders.Clear();
         AccessTools.Field(typeof(NPotionContainer), "_focusedHolder")?.SetValue(potionContainer, null);
 
-        AccessTools.Method(typeof(NPotionContainer), "GrowPotionHolders")?.Invoke(potionContainer, new object[] { primaryPlayer.MaxPotionCount });
-        foreach (PotionModel ownedPotion in primaryPlayer.Potions)
+        AccessTools.Method(typeof(NPotionContainer), "GrowPotionHolders")?.Invoke(potionContainer, new object[] { targetPlayer.MaxPotionCount });
+        foreach (PotionModel ownedPotion in targetPlayer.Potions)
         {
             AccessTools.Method(typeof(NPotionContainer), "Add")?.Invoke(potionContainer, new object[] { ownedPotion, true });
         }
 
-        LocalMultiControlLogger.Info($"药水栏已绑定到1号位玩家: player={primaryPlayer.NetId}, slotCount={primaryPlayer.MaxPotionCount}");
+        LocalMultiControlLogger.Info($"药水栏已重建到目标玩家: player={targetPlayer.NetId}, slotCount={targetPlayer.MaxPotionCount}");
         return true;
     }
 }
-

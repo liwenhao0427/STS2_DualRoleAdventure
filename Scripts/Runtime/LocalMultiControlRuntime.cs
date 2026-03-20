@@ -711,7 +711,8 @@ internal static class LocalMultiControlRuntime
 
             topBar.Portrait.Initialize(player);
 
-            // 药水仍维持1号位共用展示；遗物按当前控制角色刷新。
+            NPotionContainerPatch.TryBindPotionContainerToPlayer(runNode.GlobalUi.TopBar.PotionContainer, runState, playerId);
+
             // 注意：遗物刷新必须先清理旧节点再重建，避免切人后叠层。
             NRelicInventoryPatch.TryRebuildRelicInventoryToPlayer(runNode.GlobalUi.RelicInventory, runState, playerId);
             AccessTools.Method(typeof(MegaCrit.Sts2.Core.Nodes.Relics.NRelicInventory), "UpdateNavigation")
@@ -774,7 +775,8 @@ internal static class LocalMultiControlRuntime
 
         try
         {
-            potionRefreshed = NPotionContainerPatch.TryBindPotionContainerToPrimaryPlayer(runNode.GlobalUi.TopBar.PotionContainer, runState);
+            ulong playerId = Session.CurrentControlledPlayerId ?? LocalContext.NetId ?? LocalSelfCoopContext.PrimaryPlayerId;
+            potionRefreshed = NPotionContainerPatch.TryBindPotionContainerToPlayer(runNode.GlobalUi.TopBar.PotionContainer, runState, playerId);
         }
         catch (Exception exception)
         {
