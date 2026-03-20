@@ -12,8 +12,10 @@ using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Patch;
@@ -80,9 +82,76 @@ internal static class RestSiteSynchronizerChooseLocalOptionPatch
                 $"休息区选项执行失败，不触发自动切人: player={localPlayerId.Value}, optionIndex={optionIndex}, snapshot={DescribeOptions(sourceOptionsSnapshot)}");
             return success;
         }
-        LocalMultiControlLogger.Info($"休息区选择成功：保持独立手动流程，不自动续传选项。player={localPlayerId.Value}, optionIndex={optionIndex}");
+
+        if (TryFindNextSelectablePlayer(synchronizer, localPlayerId.Value, out ulong nextPlayerId))
+        {
+            LocalMultiControlLogger.Info(
+                $"休息区选择成功，已排队切换到下一位待选角色（不代选）: {localPlayerId.Value} -> {nextPlayerId}, optionIndex={optionIndex}, snapshot={DescribeOptions(sourceOptionsSnapshot)}");
+            Callable.From(delegate
+            {
+                RestSiteAutoSwitchUtil.SwitchToPlayerAndEnsureOptions(nextPlayerId, "rest-site-next-player-choice");
+            }).CallDeferred();
+        }
+        else
+        {
+            LocalMultiControlLogger.Info(
+                $"休息区选择完成：所有可选角色都已选择。player={localPlayerId.Value}, optionIndex={optionIndex}");
+            Callable.From(delegate
+            {
+                RestSiteAutoSwitchUtil.ShowAllPlayersSelectedNotice();
+            }).CallDeferred();
+        }
 
         return success;
+    }
+
+    private static bool TryFindNextSelectablePlayer(RestSiteSynchronizer synchronizer, ulong currentPlayerId, out ulong nextPlayerId)
+    {
+        IReadOnlyList<ulong> orderedPlayerIds = LocalMultiControlRuntime.SessionState.OrderedPlayerIds;
+        if (orderedPlayerIds.Count < 2)
+        {
+            nextPlayerId = 0;
+            return false;
+        }
+
+        int currentIndex = IndexOfPlayer(orderedPlayerIds, currentPlayerId);
+        if (currentIndex < 0)
+        {
+            currentIndex = 0;
+        }
+
+        for (int step = 1; step < orderedPlayerIds.Count; step++)
+        {
+            int index = (currentIndex + step) % orderedPlayerIds.Count;
+            ulong candidatePlayerId = orderedPlayerIds[index];
+            if (candidatePlayerId == currentPlayerId)
+            {
+                continue;
+            }
+
+            IReadOnlyList<RestSiteOption> candidateOptions = synchronizer.GetOptionsForPlayer(candidatePlayerId);
+            if (candidateOptions.Count > 0)
+            {
+                nextPlayerId = candidatePlayerId;
+                return true;
+            }
+        }
+
+        nextPlayerId = 0;
+        return false;
+    }
+
+    private static int IndexOfPlayer(IReadOnlyList<ulong> orderedPlayerIds, ulong playerId)
+    {
+        for (int i = 0; i < orderedPlayerIds.Count; i++)
+        {
+            if (orderedPlayerIds[i] == playerId)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private static ulong? ReadLocalPlayerIdFromSynchronizer(RestSiteSynchronizer synchronizer)
@@ -113,7 +182,7 @@ internal static class NRestSiteRoomAfterSelectingOptionPatch
     [HarmonyPostfix]
     private static void Postfix(ref Task __result)
     {
-        // 保持独立手动流程：选择后不自动代切人/代选项。
+        // 选择后的自动切人由 RestSiteSynchronizerChooseLocalOptionPatch 统一处理。
     }
 }
 
@@ -222,11 +291,15 @@ internal static class NRestSiteRoomReadyPatch
 
         Callable.From(delegate
         {
-            EnsurePrimaryPlayerOptionsVisible(__instance, attempt: 0);
+            EnsurePrimaryPlayerOptionsVisible(__instance, attempt: 0, loadingSettledFramesLeft: 2, switchedToPrimary: false);
         }).CallDeferred();
     }
 
-    private static void EnsurePrimaryPlayerOptionsVisible(NRestSiteRoom room, int attempt)
+    private static void EnsurePrimaryPlayerOptionsVisible(
+        NRestSiteRoom room,
+        int attempt,
+        int loadingSettledFramesLeft,
+        bool switchedToPrimary)
     {
         if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode || !RunManager.Instance.IsInProgress)
         {
@@ -238,19 +311,109 @@ internal static class NRestSiteRoomReadyPatch
             return;
         }
 
-        LocalMultiControlRuntime.SwitchControlledPlayerTo(LocalSelfCoopContext.PrimaryPlayerId, $"rest-site-enter-primary-{attempt}");
+        bool isLoading = LocalSelfCoopContext.NetService?.IsGameLoading ?? false;
+        if (isLoading)
+        {
+            Callable.From(delegate
+            {
+                EnsurePrimaryPlayerOptionsVisible(room, attempt, loadingSettledFramesLeft: 2, switchedToPrimary);
+            }).CallDeferred();
+            return;
+        }
+
+        if (loadingSettledFramesLeft > 0)
+        {
+            Callable.From(delegate
+            {
+                EnsurePrimaryPlayerOptionsVisible(room, attempt, loadingSettledFramesLeft - 1, switchedToPrimary);
+            }).CallDeferred();
+            return;
+        }
+
+        if (!switchedToPrimary)
+        {
+            LocalMultiControlRuntime.SwitchControlledPlayerTo(LocalSelfCoopContext.PrimaryPlayerId, $"rest-site-enter-primary-{attempt}");
+            switchedToPrimary = true;
+        }
+
         RestSiteUiRefreshUtil.TryRefresh($"rest-site-enter-primary-{attempt}");
 
         int optionCount = room.Options.Count;
-        if (optionCount > 0 || attempt >= 3)
+        int localOptionCount = RunManager.Instance.RestSiteSynchronizer.GetLocalOptions().Count;
+        if (optionCount > 0 || localOptionCount > 0 || attempt >= 6)
         {
-            LocalMultiControlLogger.Info($"休息区进入后选项检查: attempt={attempt}, options={optionCount}");
+            LocalMultiControlLogger.Info(
+                $"休息区进入后选项检查: attempt={attempt}, options={optionCount}, localOptions={localOptionCount}, switchedToPrimary={switchedToPrimary}");
             return;
         }
 
         Callable.From(delegate
         {
-            EnsurePrimaryPlayerOptionsVisible(room, attempt + 1);
+            EnsurePrimaryPlayerOptionsVisible(room, attempt + 1, loadingSettledFramesLeft: 1, switchedToPrimary);
+        }).CallDeferred();
+    }
+}
+
+internal static class RestSiteAutoSwitchUtil
+{
+    private const int MaxRefreshAttempts = 5;
+
+    internal static void SwitchToPlayerAndEnsureOptions(ulong targetPlayerId, string source)
+    {
+        EnsureOptionsAfterSwitch(targetPlayerId, source, attempt: 0, switched: false);
+    }
+
+    internal static void ShowAllPlayersSelectedNotice()
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
+        {
+            return;
+        }
+
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create("休息区选择完成：所有可选角色都已选择"));
+        LocalMultiControlLogger.Info("休息区提示文本已弹出：所有可选角色都已选择。");
+    }
+
+    private static void EnsureOptionsAfterSwitch(ulong targetPlayerId, string source, int attempt, bool switched)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode || !RunManager.Instance.IsInProgress)
+        {
+            return;
+        }
+
+        NRestSiteRoom? room = NRestSiteRoom.Instance;
+        if (room == null)
+        {
+            return;
+        }
+
+        if (!switched)
+        {
+            LocalMultiControlRuntime.SwitchControlledPlayerTo(targetPlayerId, source);
+            switched = true;
+        }
+
+        RestSiteUiRefreshUtil.TryRefresh($"{source}-attempt-{attempt}");
+
+        int targetOptionCount = RunManager.Instance.RestSiteSynchronizer.GetOptionsForPlayer(targetPlayerId).Count;
+        int localOptionCount = RunManager.Instance.RestSiteSynchronizer.GetLocalOptions().Count;
+        if (targetOptionCount > 0 && localOptionCount > 0)
+        {
+            LocalMultiControlLogger.Info(
+                $"休息区已自动切换到下一位待选角色并刷新成功: target={targetPlayerId}, attempt={attempt}, targetOptions={targetOptionCount}, localOptions={localOptionCount}");
+            return;
+        }
+
+        if (attempt >= MaxRefreshAttempts)
+        {
+            LocalMultiControlLogger.Warn(
+                $"休息区自动切换后仍未恢复选项显示: target={targetPlayerId}, attempts={attempt + 1}, targetOptions={targetOptionCount}, localOptions={localOptionCount}");
+            return;
+        }
+
+        Callable.From(delegate
+        {
+            EnsureOptionsAfterSwitch(targetPlayerId, source, attempt + 1, switched);
         }).CallDeferred();
     }
 }
