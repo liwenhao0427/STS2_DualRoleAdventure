@@ -111,6 +111,22 @@ Start-Process "steam://rungameid/2868840"
 2. 评审后将确认项同步到主任务表，`数据来源` 填 `玩家问卷`。
 3. 开发完成时同步更新两表状态，保证“玩家视角”和“开发视角”可追踪。
 
+### Codex Skill（开发者）
+
+- 技能文档：`skills/feishu-bitable-sync/SKILL.md`
+- 同步脚本：`Scripts/Tools/SyncFeishuTask.ps1`
+- 常用命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Scripts\Tools\SyncFeishuTask.ps1 `
+  -TaskDescription "本次任务标题" `
+  -LatestNote "本次完成内容摘要" `
+  -Progress "已完成" `
+  -DevStatus "已完成" `
+  -Category "Bug修复" `
+  -Source "AI整理"
+```
+
 ## 修改日志（重要里程碑）
 
 详细记录见 [CHANGELOG.md](./CHANGELOG.md)。
