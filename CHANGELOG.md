@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [v1.06] - 2026-03-20
+
+### Changed
+- 药水改为按角色独立维护：不再固定归属1号位玩家。
+- 移除本地多控下“初始额外+2药水位”的特殊规则，恢复联机一致的药水位行为。
+- 切人时顶部药水栏会跟随当前控制角色自动刷新，并保持可直接使用。
+
 ## [v1.05] - 2026-03-20
 
 ### Fixed
@@ -47,7 +54,8 @@
 - 建立本地多控最小可用闭环。
 - 基础输入切换、关键同步链路与核心补丁框架落地。
 
-[Unreleased]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/compare/v1.05...HEAD
+[Unreleased]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/compare/v1.06...HEAD
+[v1.06]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v1.06
 [v1.05]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v1.05
 [v0.1.9]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v0.1.9
 [v0.1.3]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v0.1.3
