@@ -1,6 +1,8 @@
 using Godot;
 using MegaCrit.Sts2.Core.ControllerInput;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Runtime;
@@ -114,6 +116,11 @@ internal static class LocalGamepadAxisRouter
             return false;
         }
 
+        if (inputEvent.IsActionPressed(Controller.faceButtonNorth) && TryHandleWakuuHotkey())
+        {
+            return true;
+        }
+
         if (inputEvent.IsActionPressed(Controller.leftTrigger))
         {
             HandleLtPressed("ninputmanager");
@@ -127,6 +134,65 @@ internal static class LocalGamepadAxisRouter
         }
 
         return false;
+    }
+
+    private static bool TryHandleWakuuHotkey()
+    {
+        if (RunManager.Instance.IsInProgress)
+        {
+            return false;
+        }
+
+        if (LocalSelfCoopContext.ActiveCharacterSelectScreen == null)
+        {
+            return false;
+        }
+
+        if (_isLtHeld)
+        {
+            return ToggleAllWakuuByHotkey();
+        }
+
+        return ToggleCurrentWakuuByHotkey();
+    }
+
+    private static bool ToggleCurrentWakuuByHotkey()
+    {
+        ulong playerId = LocalSelfCoopContext.CurrentLobbyEditingPlayerId;
+        bool nextEnabled = !LocalSelfCoopContext.IsWakuuEnabled(playerId);
+        bool changed = LocalSelfCoopContext.SetWakuuEnabled(playerId, nextEnabled, "gamepad:Y");
+        if (!changed)
+        {
+            LocalMultiControlLogger.Info($"[LT组合] Y切换当前瓦库失败或无变化: player={playerId}, target={nextEnabled}");
+            return false;
+        }
+
+        _ltComboUsed |= _isLtHeld;
+        string stateText = nextEnabled ? "开启" : "关闭";
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"角色{LocalSelfCoopContext.GetSlotLabel(playerId)} 瓦库{stateText}"));
+        LocalMultiControlLogger.Info($"[LT组合] Y切换当前瓦库成功: player={playerId}, enabled={nextEnabled}");
+        return true;
+    }
+
+    private static bool ToggleAllWakuuByHotkey()
+    {
+        bool allEnabled = LocalSelfCoopContext.LocalPlayerIds
+            .Take(LocalSelfCoopContext.DesiredLocalPlayerCount)
+            .All(LocalSelfCoopContext.IsWakuuEnabled);
+        bool targetEnabled = !allEnabled;
+
+        bool changed = LocalSelfCoopContext.SetAllWakuuEnabled(targetEnabled, "gamepad:LT+Y");
+        if (!changed)
+        {
+            LocalMultiControlLogger.Info($"[LT组合] LT+Y切换全体瓦库失败或无变化: target={targetEnabled}");
+            return false;
+        }
+
+        _ltComboUsed = true;
+        string stateText = targetEnabled ? "全体开启" : "全体关闭";
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"瓦库{stateText}"));
+        LocalMultiControlLogger.Info($"[LT组合] LT+Y切换全体瓦库成功: enabled={targetEnabled}");
+        return true;
     }
 
     public static bool ShouldBlockOriginalControllerInput(InputEvent inputEvent)

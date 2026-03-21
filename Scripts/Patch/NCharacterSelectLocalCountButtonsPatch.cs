@@ -1,6 +1,7 @@
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
+using MegaCrit.Sts2.Core.ControllerInput;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
@@ -47,7 +48,14 @@ internal static class LocalCharacterSelectCountButtons
     private const string PlusButtonName = "LocalSelfCoopPlusButton";
     private const string PrevButtonName = "LocalSelfCoopPrevButton";
     private const string NextButtonName = "LocalSelfCoopNextButton";
+    private const string LtHintIconName = "LocalSelfCoopLtHintIcon";
+    private const string MinusHintIconName = "LocalSelfCoopMinusHintIcon";
+    private const string PlusHintIconName = "LocalSelfCoopPlusHintIcon";
+    private const string PrevHintIconName = "LocalSelfCoopPrevHintIcon";
+    private const string NextHintIconName = "LocalSelfCoopNextHintIcon";
+    private const string PlusSignName = "LocalSelfCoopHintPlusSign";
     private static readonly Vector2 ButtonSize = new Vector2(140f, 32f);
+    private static readonly Vector2 HintIconSize = new Vector2(24f, 24f);
     private const float VerticalGapRatio = 0.5f;
     private const float HorizontalGapByIcon = 44f;
 
@@ -103,6 +111,13 @@ internal static class LocalCharacterSelectCountButtons
         nextButton.Connect(NClickableControl.SignalName.Released,
             Callable.From<NClickableControl>((_) => OnSwitchLobbyPlayer(true)));
         panel.AddChild(nextButton);
+
+        EnsureHintIcon(panel, LtHintIconName);
+        EnsureHintIcon(panel, MinusHintIconName);
+        EnsureHintIcon(panel, PlusHintIconName);
+        EnsureHintIcon(panel, PrevHintIconName);
+        EnsureHintIcon(panel, NextHintIconName);
+        EnsurePlusSign(panel);
 
         screen.AddChildSafely(panel);
         LocalMultiControlLogger.Info("角色选择页已创建本地人数 +/- 实体按钮。");
@@ -171,6 +186,8 @@ internal static class LocalCharacterSelectCountButtons
         {
             nextButton.Position = new Vector2(secondColumnX, secondRowY);
         }
+
+        RefreshHintIcons(panel, secondColumnX, secondRowY);
     }
 
     private static void OnAdjustPlayerCount(int delta)
@@ -205,5 +222,77 @@ internal static class LocalCharacterSelectCountButtons
         }
 
         LocalSelfCoopContext.SwitchLobbyEditingPlayer(next);
+    }
+
+    private static void EnsureHintIcon(Control panel, string nodeName)
+    {
+        if (panel.GetNodeOrNull<TextureRect>(nodeName) != null)
+        {
+            return;
+        }
+
+        TextureRect icon = new()
+        {
+            Name = nodeName,
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = Control.MouseFilterEnum.Ignore
+        };
+        panel.AddChild(icon);
+    }
+
+    private static void EnsurePlusSign(Control panel)
+    {
+        if (panel.GetNodeOrNull<Label>(PlusSignName) != null)
+        {
+            return;
+        }
+
+        Label plusSign = new()
+        {
+            Name = PlusSignName,
+            Text = "+",
+            MouseFilter = Control.MouseFilterEnum.Ignore
+        };
+        plusSign.AddThemeFontSizeOverride("font_size", 16);
+        plusSign.AddThemeColorOverride("font_color", new Color("f3efe6"));
+        plusSign.AddThemeColorOverride("font_outline_color", new Color("111111"));
+        plusSign.AddThemeConstantOverride("outline_size", 3);
+        panel.AddChild(plusSign);
+    }
+
+    private static void RefreshHintIcons(Control panel, float secondColumnX, float secondRowY)
+    {
+        Texture2D? lt = NControllerManager.Instance?.GetHotkeyIcon(Controller.leftTrigger);
+        Texture2D? left = NControllerManager.Instance?.GetHotkeyIcon(Controller.dPadWest);
+        Texture2D? right = NControllerManager.Instance?.GetHotkeyIcon(Controller.dPadEast);
+        Texture2D? up = NControllerManager.Instance?.GetHotkeyIcon(Controller.dPadNorth);
+        Texture2D? down = NControllerManager.Instance?.GetHotkeyIcon(Controller.dPadSouth);
+
+        PlaceHint(panel, LtHintIconName, lt, new Vector2(secondColumnX * 0.5f - 10f, secondRowY - 44f));
+        PlaceHint(panel, MinusHintIconName, left, new Vector2(8f, 4f));
+        PlaceHint(panel, PlusHintIconName, right, new Vector2(secondColumnX + 8f, 4f));
+        PlaceHint(panel, PrevHintIconName, up, new Vector2(8f, secondRowY + 4f));
+        PlaceHint(panel, NextHintIconName, down, new Vector2(secondColumnX + 8f, secondRowY + 4f));
+
+        if (panel.GetNodeOrNull<Label>(PlusSignName) is { } plusSign)
+        {
+            plusSign.Position = new Vector2(secondColumnX * 0.5f + 18f, secondRowY - 40f);
+            plusSign.Visible = lt != null;
+        }
+    }
+
+    private static void PlaceHint(Control panel, string nodeName, Texture2D? texture, Vector2 position)
+    {
+        if (panel.GetNodeOrNull<TextureRect>(nodeName) is not { } icon)
+        {
+            return;
+        }
+
+        icon.Texture = texture;
+        icon.Size = HintIconSize;
+        icon.CustomMinimumSize = HintIconSize;
+        icon.Position = position;
+        icon.Visible = texture != null;
     }
 }
