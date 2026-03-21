@@ -8,6 +8,8 @@ namespace LocalMultiControl.Scripts.Patch;
 [HarmonyPatch(typeof(NInputManager), nameof(NInputManager._UnhandledInput))]
 internal static class NInputManagerPatch
 {
+    private static ulong _lastBlockLogAtMs;
+
     [HarmonyPrefix]
     private static bool Prefix(InputEvent inputEvent)
     {
@@ -25,7 +27,13 @@ internal static class NInputManagerPatch
 
         if (LocalGamepadAxisRouter.ShouldBlockOriginalControllerInput(inputEvent))
         {
-            LocalMultiControlLogger.Info("[LT组合] LT持有期间已全拦截控制器原始输入。");
+            ulong now = Time.GetTicksMsec();
+            if (now - _lastBlockLogAtMs >= 500)
+            {
+                _lastBlockLogAtMs = now;
+                LocalMultiControlLogger.Info("[LT组合] LT持有期间已全拦截控制器原始输入。");
+            }
+
             return false;
         }
 

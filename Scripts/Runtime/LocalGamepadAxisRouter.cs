@@ -60,7 +60,7 @@ internal static class LocalGamepadAxisRouter
         }
 
         bool hasAxis = TryGetRightStickAxis(out int joypadId, out float axisX, out float axisY);
-        ResolveRightStickDirectionFromActions(out int actionHorizontal, out int actionVertical);
+        ResolveStickDirectionFromActions(out int actionHorizontal, out int actionVertical);
 
         ulong now = Time.GetTicksMsec();
         bool noAxisInput = !hasAxis || (Mathf.Abs(axisX) < TriggerThreshold && Mathf.Abs(axisY) < TriggerThreshold);
@@ -81,6 +81,10 @@ internal static class LocalGamepadAxisRouter
         if (actionVertical != 0)
         {
             preferVertical = true;
+        }
+        else if (actionHorizontal != 0)
+        {
+            preferVertical = false;
         }
 
         int verticalTarget = ResolveDirectionWithHysteresis(axisY, _verticalDirection);
@@ -205,17 +209,17 @@ internal static class LocalGamepadAxisRouter
             if (direction < 0)
             {
                 bool switched = LocalControlSwitchGuard.TrySwitchPrevious("gamepad:lt+right-stick-up");
-                LocalMultiControlLogger.Info($"[LT组合] 右摇杆上触发切人，结果={switched}");
+                LocalMultiControlLogger.Info($"[LT组合] 摇杆上触发切人，结果={switched}");
                 return;
             }
 
             bool switchedNext = LocalControlSwitchGuard.TrySwitchNext("gamepad:lt+right-stick-down");
-            LocalMultiControlLogger.Info($"[LT组合] 右摇杆下触发切人，结果={switchedNext}");
+            LocalMultiControlLogger.Info($"[LT组合] 摇杆下触发切人，结果={switchedNext}");
             return;
         }
 
         bool switchedLobby = LocalSelfCoopContext.SwitchLobbyEditingPlayer(next: direction > 0);
-        LocalMultiControlLogger.Info($"[LT组合] 选角界面右摇杆{(direction > 0 ? "下" : "上")}切编辑角色，结果={switchedLobby}");
+        LocalMultiControlLogger.Info($"[LT组合] 选角界面摇杆{(direction > 0 ? "下" : "上")}切编辑角色，结果={switchedLobby}");
     }
 
     private static void TriggerHorizontal(int direction)
@@ -224,7 +228,7 @@ internal static class LocalGamepadAxisRouter
         bool changed = LocalSelfCoopContext.AdjustDesiredLocalPlayerCount(
             direction > 0 ? 1 : -1,
             "gamepad:lt+right-stick-x");
-        LocalMultiControlLogger.Info($"[LT组合] 右摇杆{(direction > 0 ? "右" : "左")}调人数，结果={changed}");
+        LocalMultiControlLogger.Info($"[LT组合] 选角界面摇杆{(direction > 0 ? "右" : "左")}调人数，结果={changed}");
     }
 
     private static int ResolveDirectionWithHysteresis(float axisValue, int currentDirection)
@@ -305,15 +309,16 @@ internal static class LocalGamepadAxisRouter
         return joypadId >= 0;
     }
 
-    private static void ResolveRightStickDirectionFromActions(out int horizontal, out int vertical)
+    private static void ResolveStickDirectionFromActions(out int horizontal, out int vertical)
     {
         horizontal = 0;
         vertical = 0;
 
-        bool right = Input.IsActionPressed(Controller.joystickRight);
-        bool left = Input.IsActionPressed(Controller.joystickLeft);
-        bool down = Input.IsActionPressed(Controller.joystickDown);
-        bool up = Input.IsActionPressed(Controller.joystickUp);
+        // 兼容不同输入层映射：优先读取 joystick_*，回退到 dpad_*。
+        bool right = Input.IsActionPressed(Controller.joystickRight) || Input.IsActionPressed(Controller.dPadEast);
+        bool left = Input.IsActionPressed(Controller.joystickLeft) || Input.IsActionPressed(Controller.dPadWest);
+        bool down = Input.IsActionPressed(Controller.joystickDown) || Input.IsActionPressed(Controller.dPadSouth);
+        bool up = Input.IsActionPressed(Controller.joystickUp) || Input.IsActionPressed(Controller.dPadNorth);
 
         if (right && !left)
         {
