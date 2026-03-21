@@ -61,6 +61,7 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
 
         button.ButtonText = string.Empty;
         Rect2 anchorRect = ResolveIdAnchorRect(state);
+        HideOriginalIdLabel(state);
 
         button.Size = SmallButtonSize;
         button.CustomMinimumSize = SmallButtonSize;
