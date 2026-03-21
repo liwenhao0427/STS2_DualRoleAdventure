@@ -60,32 +60,44 @@ internal static class LocalGamepadAxisRouter
         }
 
         bool hasAxis = TryGetRightStickAxis(out int joypadId, out float axisX, out float axisY);
-        if (!hasAxis)
-        {
-            ResetAxisRepeatState();
-            return;
-        }
+        ResolveRightStickDirectionFromActions(out int actionHorizontal, out int actionVertical);
 
         ulong now = Time.GetTicksMsec();
-        if (Mathf.Abs(axisX) < TriggerThreshold && Mathf.Abs(axisY) < TriggerThreshold)
+        bool noAxisInput = !hasAxis || (Mathf.Abs(axisX) < TriggerThreshold && Mathf.Abs(axisY) < TriggerThreshold);
+        bool noActionInput = actionHorizontal == 0 && actionVertical == 0;
+        if (noAxisInput && noActionInput)
         {
             if (now - _lastIdleLogAtMs >= 1200)
             {
                 _lastIdleLogAtMs = now;
-                LocalMultiControlLogger.Info($"[LT组合] LT按住中，未检测到右摇杆越过阈值: joypad={joypadId}, x={axisX:F2}, y={axisY:F2}");
+                int joypadCount = Input.GetConnectedJoypads().Count;
+                LocalMultiControlLogger.Info(
+                    $"[LT组合] LT按住中，未检测到右摇杆输入: joypads={joypadCount}, joypad={joypadId}, x={axisX:F2}, y={axisY:F2}, actionX={actionHorizontal}, actionY={actionVertical}");
             }
         }
 
         bool isInRun = RunManager.Instance.IsInProgress;
         bool preferVertical = Mathf.Abs(axisY) >= Mathf.Abs(axisX);
+        if (actionVertical != 0)
+        {
+            preferVertical = true;
+        }
 
         int verticalTarget = ResolveDirectionWithHysteresis(axisY, _verticalDirection);
+        if (actionVertical != 0)
+        {
+            verticalTarget = actionVertical;
+        }
         HandleVertical(verticalTarget, now, isInRun);
 
         int horizontalTarget = 0;
         if (!isInRun && !preferVertical)
         {
             horizontalTarget = ResolveDirectionWithHysteresis(axisX, _horizontalDirection);
+            if (actionHorizontal != 0)
+            {
+                horizontalTarget = actionHorizontal;
+            }
         }
 
         HandleHorizontal(horizontalTarget, now);
@@ -291,6 +303,35 @@ internal static class LocalGamepadAxisRouter
         }
 
         return joypadId >= 0;
+    }
+
+    private static void ResolveRightStickDirectionFromActions(out int horizontal, out int vertical)
+    {
+        horizontal = 0;
+        vertical = 0;
+
+        bool right = Input.IsActionPressed(Controller.joystickRight);
+        bool left = Input.IsActionPressed(Controller.joystickLeft);
+        bool down = Input.IsActionPressed(Controller.joystickDown);
+        bool up = Input.IsActionPressed(Controller.joystickUp);
+
+        if (right && !left)
+        {
+            horizontal = 1;
+        }
+        else if (left && !right)
+        {
+            horizontal = -1;
+        }
+
+        if (down && !up)
+        {
+            vertical = 1;
+        }
+        else if (up && !down)
+        {
+            vertical = -1;
+        }
     }
 
     private static void Reset()
