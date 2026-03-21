@@ -195,7 +195,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             Label label = new()
             {
                 Name = GlobalWakuuLabelName,
-                Text = "全瓦库",
+                Text = LocalModText.GlobalWakuuLabel,
                 MouseFilter = Control.MouseFilterEnum.Ignore,
                 TopLevel = true,
                 ZIndex = 92
@@ -233,6 +233,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             return;
         }
 
+        label.Text = LocalModText.GlobalWakuuLabel;
         toggle.GlobalPosition = GlobalToggleTopLeft;
         label.GlobalPosition = toggle.GlobalPosition + new Vector2(toggle.Size.X + 8f, 4f);
 

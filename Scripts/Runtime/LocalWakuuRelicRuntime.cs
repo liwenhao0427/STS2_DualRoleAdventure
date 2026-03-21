@@ -43,6 +43,12 @@ internal static class LocalWakuuRelicRuntime
             return;
         }
 
+        CardModel? firstPlayableCard = PileType.Hand.GetPile(relic.Owner).Cards.FirstOrDefault((candidate) => candidate.CanPlay());
+        if (firstPlayableCard == null)
+        {
+            return;
+        }
+
         EnsureWakuuPerspective(player, "before-play-phase");
         relic.Flash();
 
@@ -57,8 +63,9 @@ internal static class LocalWakuuRelicRuntime
                     break;
                 }
 
-                CardPile handPile = PileType.Hand.GetPile(relic.Owner);
-                CardModel? card = handPile.Cards.FirstOrDefault((candidate) => candidate.CanPlay());
+                CardModel? card = cardsPlayed == 0
+                    ? firstPlayableCard
+                    : PileType.Hand.GetPile(relic.Owner).Cards.FirstOrDefault((candidate) => candidate.CanPlay());
                 if (card == null)
                 {
                     break;

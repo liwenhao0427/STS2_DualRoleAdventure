@@ -370,7 +370,7 @@ internal static class RestSiteAutoSwitchUtil
             return;
         }
 
-        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create("休息区选择完成：所有可选角色都已选择"));
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create(LocalModText.RestSiteAllChosen));
         LocalMultiControlLogger.Info("休息区提示文本已弹出：所有可选角色都已选择。");
     }
 

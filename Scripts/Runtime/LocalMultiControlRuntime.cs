@@ -406,7 +406,7 @@ internal static class LocalMultiControlRuntime
         if (source != "run-launched" && !source.StartsWith("wakuu-", StringComparison.Ordinal))
         {
             string slotLabel = LocalSelfCoopContext.GetSlotLabel(currentControlledPlayerId.Value);
-            NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"控制角色: 槽位{slotLabel}"));
+            NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create(LocalModText.ControlledSlot(slotLabel)));
         }
     }
 

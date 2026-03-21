@@ -85,13 +85,13 @@ internal static class NMultiplayerHostSubmenuPatch
         Node? titleNode = button.FindChild("Title", recursive: true, owned: false);
         if (titleNode is Label title)
         {
-            title.Text = "单人多角色";
+            title.Text = LocalModText.LocalSelfCoopCardTitle;
         }
 
         Node? descriptionNode = button.FindChild("Description", recursive: true, owned: false);
         if (descriptionNode is RichTextLabel description)
         {
-            description.Text = "在本机创建2~12名可切换角色，进行本地协作。\n进入后可用 +/- 调整人数。";
+            description.Text = LocalModText.LocalSelfCoopCardDescription;
         }
     }
 
@@ -163,7 +163,7 @@ internal static class NMultiplayerHostSubmenuPatch
         }
 
         stack.Push(characterSelectScreen);
-        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create("已进入本地多角色：按 +/- 调整人数（2~12）"));
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create(LocalModText.EnteredLocalSelfCoopHint));
         LocalMultiControlLogger.Info("已跳转到本地多角色队伍角色选择界面。");
     }
 
