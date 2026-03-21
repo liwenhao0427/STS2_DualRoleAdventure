@@ -23,6 +23,7 @@ internal static class LocalGamepadAxisRouter
     private static bool _isLtHeld;
     private static bool _ltComboUsed;
     private static ulong _ltPressedAtMs;
+    private static ulong _lastIdleLogAtMs;
 
     public static void EnsurePollerAttached()
     {
@@ -58,16 +59,22 @@ internal static class LocalGamepadAxisRouter
             return;
         }
 
-        int? joypadId = TryGetJoypadId();
-        if (!joypadId.HasValue)
+        bool hasAxis = TryGetRightStickAxis(out int joypadId, out float axisX, out float axisY);
+        if (!hasAxis)
         {
             ResetAxisRepeatState();
             return;
         }
 
-        float axisX = Input.GetJoyAxis(joypadId.Value, JoyAxis.RightX);
-        float axisY = Input.GetJoyAxis(joypadId.Value, JoyAxis.RightY);
         ulong now = Time.GetTicksMsec();
+        if (Mathf.Abs(axisX) < TriggerThreshold && Mathf.Abs(axisY) < TriggerThreshold)
+        {
+            if (now - _lastIdleLogAtMs >= 1200)
+            {
+                _lastIdleLogAtMs = now;
+                LocalMultiControlLogger.Info($"[LT组合] LT按住中，未检测到右摇杆越过阈值: joypad={joypadId}, x={axisX:F2}, y={axisY:F2}");
+            }
+        }
 
         bool isInRun = RunManager.Instance.IsInProgress;
         bool preferVertical = Mathf.Abs(axisY) >= Mathf.Abs(axisX);
@@ -100,6 +107,27 @@ internal static class LocalGamepadAxisRouter
         if (inputEvent.IsActionReleased(Controller.leftTrigger))
         {
             HandleLtReleased("ninputmanager");
+            return true;
+        }
+
+        return false;
+    }
+
+    public static bool ShouldBlockOriginalControllerInput(InputEvent inputEvent)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !_isLtHeld)
+        {
+            return false;
+        }
+
+        if (inputEvent is InputEventJoypadButton or InputEventJoypadMotion)
+        {
+            return true;
+        }
+
+        if (inputEvent is InputEventAction actionEvent &&
+            Controller.AllControllerInputs.Contains(actionEvent.Action))
+        {
             return true;
         }
 
@@ -233,11 +261,44 @@ internal static class LocalGamepadAxisRouter
         return connectedJoypads[0];
     }
 
+    private static bool TryGetRightStickAxis(out int joypadId, out float axisX, out float axisY)
+    {
+        joypadId = -1;
+        axisX = 0f;
+        axisY = 0f;
+
+        Godot.Collections.Array<int> connectedJoypads = Input.GetConnectedJoypads();
+        if (connectedJoypads.Count == 0)
+        {
+            return false;
+        }
+
+        float bestMagnitude = -1f;
+        foreach (int id in connectedJoypads)
+        {
+            float x = Input.GetJoyAxis(id, JoyAxis.RightX);
+            float y = Input.GetJoyAxis(id, JoyAxis.RightY);
+            float magnitude = Mathf.Max(Mathf.Abs(x), Mathf.Abs(y));
+            if (magnitude <= bestMagnitude)
+            {
+                continue;
+            }
+
+            bestMagnitude = magnitude;
+            joypadId = id;
+            axisX = x;
+            axisY = y;
+        }
+
+        return joypadId >= 0;
+    }
+
     private static void Reset()
     {
         _isLtHeld = false;
         _ltComboUsed = false;
         _ltPressedAtMs = 0;
+        _lastIdleLogAtMs = 0;
         ResetAxisRepeatState();
     }
 
@@ -259,6 +320,7 @@ internal static class LocalGamepadAxisRouter
         _isLtHeld = true;
         _ltComboUsed = false;
         _ltPressedAtMs = Time.GetTicksMsec();
+        _lastIdleLogAtMs = 0;
         ResetAxisRepeatState();
         LocalMultiControlLogger.Info($"[LT组合] 检测到 LT 按下，开始拦截原逻辑: source={source}");
     }

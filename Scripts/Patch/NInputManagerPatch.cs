@@ -23,6 +23,12 @@ internal static class NInputManagerPatch
             return false;
         }
 
+        if (LocalGamepadAxisRouter.ShouldBlockOriginalControllerInput(inputEvent))
+        {
+            LocalMultiControlLogger.Info("[LT组合] LT持有期间已全拦截控制器原始输入。");
+            return false;
+        }
+
         return true;
     }
 }
