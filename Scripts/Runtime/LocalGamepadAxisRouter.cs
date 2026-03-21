@@ -1,4 +1,5 @@
 using Godot;
+using MegaCrit.Sts2.Core.ControllerInput;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -19,6 +20,9 @@ internal static class LocalGamepadAxisRouter
 
     private static ulong _nextHorizontalRepeatAtMs;
     private static ulong _nextVerticalRepeatAtMs;
+    private static bool _isLtHeld;
+    private static bool _ltComboUsed;
+    private static ulong _ltPressedAtMs;
 
     public static void EnsurePollerAttached()
     {
@@ -48,15 +52,21 @@ internal static class LocalGamepadAxisRouter
             return;
         }
 
-        int? joypadId = TryGetJoypadId();
-        if (!joypadId.HasValue)
+        if (!_isLtHeld)
         {
-            Reset();
+            ResetAxisRepeatState();
             return;
         }
 
-        float axisX = Input.GetJoyAxis(joypadId.Value, JoyAxis.LeftX);
-        float axisY = Input.GetJoyAxis(joypadId.Value, JoyAxis.LeftY);
+        int? joypadId = TryGetJoypadId();
+        if (!joypadId.HasValue)
+        {
+            ResetAxisRepeatState();
+            return;
+        }
+
+        float axisX = Input.GetJoyAxis(joypadId.Value, JoyAxis.RightX);
+        float axisY = Input.GetJoyAxis(joypadId.Value, JoyAxis.RightY);
         ulong now = Time.GetTicksMsec();
 
         bool isInRun = RunManager.Instance.IsInProgress;
@@ -72,6 +82,28 @@ internal static class LocalGamepadAxisRouter
         }
 
         HandleHorizontal(horizontalTarget, now);
+    }
+
+    public static bool TryInterceptControllerInput(InputEvent inputEvent)
+    {
+        if (!LocalSelfCoopContext.IsEnabled)
+        {
+            return false;
+        }
+
+        if (inputEvent.IsActionPressed(Controller.leftTrigger))
+        {
+            HandleLtPressed("ninputmanager");
+            return true;
+        }
+
+        if (inputEvent.IsActionReleased(Controller.leftTrigger))
+        {
+            HandleLtReleased("ninputmanager");
+            return true;
+        }
+
+        return false;
     }
 
     private static void HandleVertical(int targetDirection, ulong now, bool isInRun)
@@ -126,24 +158,33 @@ internal static class LocalGamepadAxisRouter
 
     private static void TriggerVertical(int direction, bool isInRun)
     {
+        _ltComboUsed = true;
+
         if (isInRun)
         {
             if (direction < 0)
             {
-                _ = LocalControlSwitchGuard.TrySwitchPrevious("gamepad:left-stick-up");
+                bool switched = LocalControlSwitchGuard.TrySwitchPrevious("gamepad:lt+right-stick-up");
+                LocalMultiControlLogger.Info($"[LT组合] 右摇杆上触发切人，结果={switched}");
                 return;
             }
 
-            _ = LocalControlSwitchGuard.TrySwitchNext("gamepad:left-stick-down");
+            bool switchedNext = LocalControlSwitchGuard.TrySwitchNext("gamepad:lt+right-stick-down");
+            LocalMultiControlLogger.Info($"[LT组合] 右摇杆下触发切人，结果={switchedNext}");
             return;
         }
 
-        _ = LocalSelfCoopContext.SwitchLobbyEditingPlayer(next: direction > 0);
+        bool switchedLobby = LocalSelfCoopContext.SwitchLobbyEditingPlayer(next: direction > 0);
+        LocalMultiControlLogger.Info($"[LT组合] 选角界面右摇杆{(direction > 0 ? "下" : "上")}切编辑角色，结果={switchedLobby}");
     }
 
     private static void TriggerHorizontal(int direction)
     {
-        _ = LocalSelfCoopContext.AdjustDesiredLocalPlayerCount(direction > 0 ? 1 : -1, "gamepad:left-stick-x");
+        _ltComboUsed = true;
+        bool changed = LocalSelfCoopContext.AdjustDesiredLocalPlayerCount(
+            direction > 0 ? 1 : -1,
+            "gamepad:lt+right-stick-x");
+        LocalMultiControlLogger.Info($"[LT组合] 右摇杆{(direction > 0 ? "右" : "左")}调人数，结果={changed}");
     }
 
     private static int ResolveDirectionWithHysteresis(float axisValue, int currentDirection)
@@ -194,10 +235,73 @@ internal static class LocalGamepadAxisRouter
 
     private static void Reset()
     {
+        _isLtHeld = false;
+        _ltComboUsed = false;
+        _ltPressedAtMs = 0;
+        ResetAxisRepeatState();
+    }
+
+    private static void ResetAxisRepeatState()
+    {
         _horizontalDirection = 0;
         _verticalDirection = 0;
         _nextHorizontalRepeatAtMs = 0;
         _nextVerticalRepeatAtMs = 0;
+    }
+
+    private static void HandleLtPressed(string source)
+    {
+        if (_isLtHeld)
+        {
+            return;
+        }
+
+        _isLtHeld = true;
+        _ltComboUsed = false;
+        _ltPressedAtMs = Time.GetTicksMsec();
+        ResetAxisRepeatState();
+        LocalMultiControlLogger.Info($"[LT组合] 检测到 LT 按下，开始拦截原逻辑: source={source}");
+    }
+
+    private static void HandleLtReleased(string source)
+    {
+        if (!_isLtHeld)
+        {
+            return;
+        }
+
+        ulong holdMs = Time.GetTicksMsec() - _ltPressedAtMs;
+        bool comboUsed = _ltComboUsed;
+        _isLtHeld = false;
+        _ltComboUsed = false;
+        _ltPressedAtMs = 0;
+        ResetAxisRepeatState();
+
+        if (!comboUsed)
+        {
+            LocalMultiControlLogger.Info($"[LT组合] LT 释放且未使用右摇杆，回放原 LT 逻辑: holdMs={holdMs}, source={source}");
+            ReplayOriginalLtAction();
+            return;
+        }
+
+        LocalMultiControlLogger.Info($"[LT组合] LT+右摇杆组合已消费，本次不触发原 LT 逻辑: holdMs={holdMs}, source={source}");
+    }
+
+    private static void ReplayOriginalLtAction()
+    {
+        InputEventAction pressed = new()
+        {
+            Action = MegaInput.viewDrawPile,
+            Pressed = true
+        };
+        Input.ParseInputEvent(pressed);
+
+        InputEventAction released = new()
+        {
+            Action = MegaInput.viewDrawPile,
+            Pressed = false
+        };
+        Input.ParseInputEvent(released);
     }
 }
 
