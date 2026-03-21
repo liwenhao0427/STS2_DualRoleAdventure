@@ -263,6 +263,7 @@ internal static class LocalCharacterSelectCountButtons
 
     private static void RefreshHintIcons(Control panel, float secondColumnX, float secondRowY)
     {
+        bool shouldShowHints = NControllerManager.Instance?.IsUsingController ?? false;
         Texture2D? lt = NControllerManager.Instance?.GetHotkeyIcon(Controller.leftTrigger);
         Texture2D? left = NControllerManager.Instance?.GetHotkeyIcon(Controller.dPadWest);
         Texture2D? right = NControllerManager.Instance?.GetHotkeyIcon(Controller.dPadEast);
@@ -278,8 +279,14 @@ internal static class LocalCharacterSelectCountButtons
         if (panel.GetNodeOrNull<Label>(PlusSignName) is { } plusSign)
         {
             plusSign.Position = new Vector2(secondColumnX * 0.5f + 18f, secondRowY - 40f);
-            plusSign.Visible = lt != null;
+            plusSign.Visible = shouldShowHints && lt != null;
         }
+
+        SetHintVisible(panel, LtHintIconName, shouldShowHints);
+        SetHintVisible(panel, MinusHintIconName, shouldShowHints);
+        SetHintVisible(panel, PlusHintIconName, shouldShowHints);
+        SetHintVisible(panel, PrevHintIconName, shouldShowHints);
+        SetHintVisible(panel, NextHintIconName, shouldShowHints);
     }
 
     private static void PlaceHint(Control panel, string nodeName, Texture2D? texture, Vector2 position)
@@ -294,5 +301,13 @@ internal static class LocalCharacterSelectCountButtons
         icon.CustomMinimumSize = HintIconSize;
         icon.Position = position;
         icon.Visible = texture != null;
+    }
+
+    private static void SetHintVisible(Control panel, string nodeName, bool visible)
+    {
+        if (panel.GetNodeOrNull<TextureRect>(nodeName) is { } icon)
+        {
+            icon.Visible = icon.Texture != null && visible;
+        }
     }
 }

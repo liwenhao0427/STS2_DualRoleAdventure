@@ -73,13 +73,14 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
                           && !RunManager.Instance.IsInProgress
                           && screen != null
                           && LocalSelfCoopContext.LocalPlayerIds.Contains(playerNode.PlayerId);
+        bool showControllerHints = NControllerManager.Instance?.IsUsingController ?? false;
 
         button.Visible = shouldShow;
         wakuuToggle.Visible = shouldShow;
         wakuuHint.Visible = false;
         if (wakuuHotkeyIcon != null)
         {
-            wakuuHotkeyIcon.Visible = shouldShow;
+            wakuuHotkeyIcon.Visible = shouldShow && showControllerHints;
         }
 
         if (!shouldShow || screen == null)
@@ -108,6 +109,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             wakuuHotkeyIcon.Size = HintIconSize;
             wakuuHotkeyIcon.CustomMinimumSize = HintIconSize;
             wakuuHotkeyIcon.GlobalPosition = wakuuToggle.GlobalPosition + new Vector2(wakuuToggle.Size.X + 4f, 0f);
+            wakuuHotkeyIcon.Visible = shouldShow && showControllerHints && wakuuHotkeyIcon.Texture != null;
         }
 
         RefreshGlobalWakuuToggle(screen);
@@ -313,11 +315,12 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
 
         List<NRemoteLobbyPlayer> localNodes = GetLocalLobbyNodes(screen);
         bool shouldShow = LocalSelfCoopContext.IsEnabled && !RunManager.Instance.IsInProgress && localNodes.Count > 0;
+        bool showControllerHints = NControllerManager.Instance?.IsUsingController ?? false;
         toggle.Visible = shouldShow;
         label.Visible = shouldShow;
-        ltIcon.Visible = shouldShow;
-        plus.Visible = shouldShow;
-        yIcon.Visible = shouldShow;
+        ltIcon.Visible = shouldShow && showControllerHints;
+        plus.Visible = shouldShow && showControllerHints;
+        yIcon.Visible = shouldShow && showControllerHints;
         if (!shouldShow)
         {
             return;
@@ -335,6 +338,9 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         ltIcon.GlobalPosition = toggle.GlobalPosition + new Vector2(136f, -2f);
         plus.GlobalPosition = ltIcon.GlobalPosition + new Vector2(HintIconSize.X + 4f, 4f);
         yIcon.GlobalPosition = plus.GlobalPosition + new Vector2(16f, -4f);
+        ltIcon.Visible = showControllerHints && ltIcon.Texture != null;
+        yIcon.Visible = showControllerHints && yIcon.Texture != null;
+        plus.Visible = showControllerHints;
 
         List<ulong> activeIds = LocalSelfCoopContext.LocalPlayerIds
             .Take(LocalSelfCoopContext.DesiredLocalPlayerCount)
