@@ -5,6 +5,7 @@ using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Factories;
@@ -26,40 +27,44 @@ internal static class ToolboxPatch
         CombatState combatState,
         ref Task __result)
     {
-        if (!ShouldAutoPickFirstCard(__instance, player))
+        if (!ShouldAutoPickFirstCard(__instance, player, out string reason))
         {
             return true;
         }
 
-        __result = AutoPickFirstCardAsync(__instance, player, choiceContext);
+        LocalMultiControlLogger.Info($"工具箱自动接管已命中: player={player.NetId}, reason={reason}");
+        __result = AutoPickFirstCardAsync(__instance, player);
         return false;
     }
 
-    private static bool ShouldAutoPickFirstCard(Toolbox relic, Player player)
+    private static bool ShouldAutoPickFirstCard(Toolbox relic, Player player, out string reason)
     {
+        reason = string.Empty;
         if (!LocalSelfCoopContext.IsEnabled || player != relic.Owner)
         {
             return false;
         }
 
-        if (!LocalSelfCoopContext.IsWakuuEnabled(player.NetId))
-        {
-            return false;
-        }
-
-        if (player.GetRelic<WhisperingEarring>() == null)
-        {
-            return false;
-        }
-
         CombatState? combatState = player.Creature.CombatState;
-        return combatState != null && combatState.RoundNumber == 1;
+        if (combatState == null || combatState.RoundNumber != 1)
+        {
+            return false;
+        }
+
+        bool isWakuuPlayer = LocalSelfCoopContext.IsWakuuEnabled(player.NetId);
+        bool isBackgroundPlayer = !LocalContext.IsMe(player);
+        if (!isWakuuPlayer && !isBackgroundPlayer)
+        {
+            return false;
+        }
+
+        reason = isWakuuPlayer ? "wakuu-player" : "background-player";
+        return true;
     }
 
     private static async Task AutoPickFirstCardAsync(
         Toolbox relic,
-        Player player,
-        PlayerChoiceContext choiceContext)
+        Player player)
     {
         if (player != relic.Owner || player.Creature.CombatState == null || player.Creature.CombatState.RoundNumber != 1)
         {
@@ -74,16 +79,11 @@ internal static class ToolboxPatch
                 relic.Owner.RunState.Rng.CombatCardGeneration)
             .ToList();
 
-        CardModel? pickedCard;
-        using (CardSelectCmd.PushSelector(new VakuuCardSelector()))
-        {
-            pickedCard = await CardSelectCmd.FromChooseACardScreen(choiceContext, cards, relic.Owner);
-        }
-
+        CardModel? pickedCard = cards.FirstOrDefault();
         if (pickedCard != null)
         {
             await CardPileCmd.AddGeneratedCardToCombat(pickedCard, PileType.Hand, addedByPlayer: true);
-            LocalMultiControlLogger.Info($"瓦库工具箱已自动选择首张卡: player={player.NetId}, card={pickedCard.Id.Entry}");
+            LocalMultiControlLogger.Info($"工具箱已自动选择首张卡: player={player.NetId}, card={pickedCard.Id.Entry}");
         }
     }
 }
