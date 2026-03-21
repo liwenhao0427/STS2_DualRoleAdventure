@@ -59,10 +59,8 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
             return;
         }
 
-        string slotLabel = LocalSelfCoopContext.GetSlotLabel(state.Player.NetId);
-        button.ButtonText = LocalModText.RoleSlot(slotLabel);
+        button.ButtonText = string.Empty;
         Rect2 anchorRect = ResolveIdAnchorRect(state);
-        HideOriginalIdLabel(state);
 
         button.Size = SmallButtonSize;
         button.CustomMinimumSize = SmallButtonSize;

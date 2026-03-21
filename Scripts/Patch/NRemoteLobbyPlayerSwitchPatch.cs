@@ -76,10 +76,8 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             return;
         }
 
-        string slotLabel = LocalSelfCoopContext.GetSlotLabel(playerNode.PlayerId);
-        button.ButtonText = LocalModText.RoleSlot(slotLabel);
+        button.ButtonText = string.Empty;
         AnchorLayout layout = ResolveAnchorLayout(screen, playerNode);
-        HideOriginalIdLabel(playerNode);
 
         button.GlobalPosition = new Vector2(layout.ColumnX, layout.AnchorRect.Position.Y - 1f);
         button.Size = SelectorButtonSize;
