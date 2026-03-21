@@ -5,12 +5,20 @@ namespace LocalMultiControl.Scripts.Runtime;
 internal static class LocalModText
 {
     private const string EnglishLanguageCode = "eng";
+    private const string UnknownSlotLabel = "?";
 
     public static bool IsEnglish => LocManager.Instance.Language == EnglishLanguageCode;
 
     public static string Select(string zh, string en)
     {
         return IsEnglish ? en : zh;
+    }
+
+    public static string RoleSlot(string slotLabel)
+    {
+        return slotLabel == UnknownSlotLabel
+            ? Select("未知角色", "Unknown Player")
+            : Select($"角色{slotLabel}", $"Player {slotLabel}");
     }
 
     public static string RestartRoomButton => Select("重启房间", "Restart Room");
@@ -27,12 +35,12 @@ internal static class LocalModText
 
     public static string LobbyEditingSlot(string slotLabel)
     {
-        return Select($"大厅编辑角色：槽位{slotLabel}", $"Lobby Editor: Slot {slotLabel}");
+        return Select($"大厅编辑角色：{RoleSlot(slotLabel)}", $"Lobby Editor: {RoleSlot(slotLabel)}");
     }
 
     public static string ControlledSlot(string slotLabel)
     {
-        return Select($"控制角色：槽位{slotLabel}", $"Controlled Character: Slot {slotLabel}");
+        return Select($"控制角色：{RoleSlot(slotLabel)}", $"Controlled Character: {RoleSlot(slotLabel)}");
     }
 
     public static string LocalPlayerCount(int count)
@@ -51,4 +59,6 @@ internal static class LocalModText
     public static string RestSiteFocusHint => Select(
         "休息区提示：若未显示选项，请先按 R 或 ] 切换一次角色",
         "Rest site tip: if options are missing, press R or ] to switch once");
+
+    public static string GlobalWakuuLabel => Select("全瓦库", "All Wakuu");
 }
