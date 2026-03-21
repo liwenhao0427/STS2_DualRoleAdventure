@@ -4,7 +4,9 @@ using System.Linq;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
+using MegaCrit.Sts2.Core.ControllerInput;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Multiplayer;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Runs;
@@ -26,9 +28,13 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
     private const string ButtonName = "LocalLobbyPlayerSwitchButton";
     private const string WakuuToggleName = "LocalLobbyPlayerWakuuToggle";
     private const string WakuuHintName = "LocalLobbyPlayerWakuuHint";
+    private const string WakuuHotkeyIconName = "LocalLobbyPlayerWakuuHotkeyIcon";
     private const string TrackerName = "LocalLobbyPlayerSwitchTracker";
     private const string GlobalWakuuToggleName = "LocalLobbyGlobalWakuuToggle";
     private const string GlobalWakuuLabelName = "LocalLobbyGlobalWakuuLabel";
+    private const string GlobalWakuuLtIconName = "LocalLobbyGlobalWakuuLtIcon";
+    private const string GlobalWakuuPlusName = "LocalLobbyGlobalWakuuPlus";
+    private const string GlobalWakuuYIconName = "LocalLobbyGlobalWakuuYIcon";
 
     private const float ColumnMergeTolerance = 40f;
     private const float MinColumnGap = 140f;
@@ -37,6 +43,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
     private static readonly Vector2 SelectorButtonSize = new(52f, 28f);
     private static readonly Vector2 WakuuToggleSize = new(30f, 28f);
     private static readonly Vector2 GlobalToggleSize = new(44f, 28f);
+    private static readonly Vector2 HintIconSize = new(28f, 28f);
     private static readonly Vector2 AnchorFallbackOffset = new(128f, 3f);
     private static readonly Vector2 GlobalToggleTopLeft = new(24f, 24f);
 
@@ -44,6 +51,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
     {
         EnsureButton(playerNode);
         EnsureWakuuToggle(playerNode);
+        EnsureWakuuHotkeyIcon(playerNode);
         EnsureWakuuHint(playerNode);
         EnsureTracker(playerNode);
         Refresh(playerNode);
@@ -54,6 +62,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         LocalSimpleTextButton? button = playerNode.GetNodeOrNull<LocalSimpleTextButton>(ButtonName);
         CheckButton? wakuuToggle = playerNode.GetNodeOrNull<CheckButton>(WakuuToggleName);
         Label? wakuuHint = playerNode.GetNodeOrNull<Label>(WakuuHintName);
+        TextureRect? wakuuHotkeyIcon = playerNode.GetNodeOrNull<TextureRect>(WakuuHotkeyIconName);
         if (button == null || wakuuToggle == null || wakuuHint == null)
         {
             return;
@@ -64,10 +73,15 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
                           && !RunManager.Instance.IsInProgress
                           && screen != null
                           && LocalSelfCoopContext.LocalPlayerIds.Contains(playerNode.PlayerId);
+        bool showControllerHints = NControllerManager.Instance?.IsUsingController ?? false;
 
         button.Visible = shouldShow;
         wakuuToggle.Visible = shouldShow;
         wakuuHint.Visible = false;
+        if (wakuuHotkeyIcon != null)
+        {
+            wakuuHotkeyIcon.Visible = shouldShow && showControllerHints;
+        }
 
         if (!shouldShow || screen == null)
         {
@@ -89,6 +103,14 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         wakuuToggle.GlobalPosition = button.GlobalPosition + new Vector2(button.Size.X + 4f, 0f);
         wakuuToggle.Size = WakuuToggleSize;
         wakuuToggle.CustomMinimumSize = WakuuToggleSize;
+        if (wakuuHotkeyIcon != null)
+        {
+            wakuuHotkeyIcon.Texture = NControllerManager.Instance?.GetHotkeyIcon(Controller.faceButtonNorth);
+            wakuuHotkeyIcon.Size = HintIconSize;
+            wakuuHotkeyIcon.CustomMinimumSize = HintIconSize;
+            wakuuHotkeyIcon.GlobalPosition = wakuuToggle.GlobalPosition + new Vector2(wakuuToggle.Size.X + 4f, 0f);
+            wakuuHotkeyIcon.Visible = shouldShow && showControllerHints && wakuuHotkeyIcon.Texture != null;
+        }
 
         RefreshGlobalWakuuToggle(screen);
     }
@@ -167,6 +189,25 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         playerNode.AddChildSafely(hint);
     }
 
+    private static void EnsureWakuuHotkeyIcon(NRemoteLobbyPlayer playerNode)
+    {
+        if (playerNode.GetNodeOrNull<TextureRect>(WakuuHotkeyIconName) != null)
+        {
+            return;
+        }
+
+        TextureRect icon = new()
+        {
+            Name = WakuuHotkeyIconName,
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            TopLevel = true,
+            ZIndex = 90
+        };
+        playerNode.AddChildSafely(icon);
+    }
+
     private static void EnsureGlobalWakuuToggle(NCharacterSelectScreen screen)
     {
         if (screen.GetNodeOrNull<CheckButton>(GlobalWakuuToggleName) == null)
@@ -206,6 +247,51 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             label.AddThemeConstantOverride("outline_size", 4);
             screen.AddChildSafely(label);
         }
+
+        if (screen.GetNodeOrNull<TextureRect>(GlobalWakuuLtIconName) == null)
+        {
+            TextureRect ltIcon = new()
+            {
+                Name = GlobalWakuuLtIconName,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                TopLevel = true,
+                ZIndex = 92
+            };
+            screen.AddChildSafely(ltIcon);
+        }
+
+        if (screen.GetNodeOrNull<Label>(GlobalWakuuPlusName) == null)
+        {
+            Label plus = new()
+            {
+                Name = GlobalWakuuPlusName,
+                Text = "+",
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                TopLevel = true,
+                ZIndex = 92
+            };
+            plus.AddThemeFontSizeOverride("font_size", 18);
+            plus.AddThemeColorOverride("font_color", new Color("f3efe6"));
+            plus.AddThemeColorOverride("font_outline_color", new Color("111111"));
+            plus.AddThemeConstantOverride("outline_size", 4);
+            screen.AddChildSafely(plus);
+        }
+
+        if (screen.GetNodeOrNull<TextureRect>(GlobalWakuuYIconName) == null)
+        {
+            TextureRect yIcon = new()
+            {
+                Name = GlobalWakuuYIconName,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                TopLevel = true,
+                ZIndex = 92
+            };
+            screen.AddChildSafely(yIcon);
+        }
     }
 
     private static void RefreshGlobalWakuuToggle(NCharacterSelectScreen? screen)
@@ -219,15 +305,22 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
 
         CheckButton? toggle = screen.GetNodeOrNull<CheckButton>(GlobalWakuuToggleName);
         Label? label = screen.GetNodeOrNull<Label>(GlobalWakuuLabelName);
-        if (toggle == null || label == null)
+        TextureRect? ltIcon = screen.GetNodeOrNull<TextureRect>(GlobalWakuuLtIconName);
+        Label? plus = screen.GetNodeOrNull<Label>(GlobalWakuuPlusName);
+        TextureRect? yIcon = screen.GetNodeOrNull<TextureRect>(GlobalWakuuYIconName);
+        if (toggle == null || label == null || ltIcon == null || plus == null || yIcon == null)
         {
             return;
         }
 
         List<NRemoteLobbyPlayer> localNodes = GetLocalLobbyNodes(screen);
         bool shouldShow = LocalSelfCoopContext.IsEnabled && !RunManager.Instance.IsInProgress && localNodes.Count > 0;
+        bool showControllerHints = NControllerManager.Instance?.IsUsingController ?? false;
         toggle.Visible = shouldShow;
         label.Visible = shouldShow;
+        ltIcon.Visible = shouldShow && showControllerHints;
+        plus.Visible = shouldShow && showControllerHints;
+        yIcon.Visible = shouldShow && showControllerHints;
         if (!shouldShow)
         {
             return;
@@ -236,6 +329,18 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         label.Text = LocalModText.GlobalWakuuLabel;
         toggle.GlobalPosition = GlobalToggleTopLeft;
         label.GlobalPosition = toggle.GlobalPosition + new Vector2(toggle.Size.X + 8f, 4f);
+        ltIcon.Texture = NControllerManager.Instance?.GetHotkeyIcon(Controller.leftTrigger);
+        yIcon.Texture = NControllerManager.Instance?.GetHotkeyIcon(Controller.faceButtonNorth);
+        ltIcon.Size = HintIconSize;
+        ltIcon.CustomMinimumSize = HintIconSize;
+        yIcon.Size = HintIconSize;
+        yIcon.CustomMinimumSize = HintIconSize;
+        ltIcon.GlobalPosition = toggle.GlobalPosition + new Vector2(136f, -2f);
+        plus.GlobalPosition = ltIcon.GlobalPosition + new Vector2(HintIconSize.X + 4f, 4f);
+        yIcon.GlobalPosition = plus.GlobalPosition + new Vector2(16f, -4f);
+        ltIcon.Visible = showControllerHints && ltIcon.Texture != null;
+        yIcon.Visible = showControllerHints && yIcon.Texture != null;
+        plus.Visible = showControllerHints;
 
         List<ulong> activeIds = LocalSelfCoopContext.LocalPlayerIds
             .Take(LocalSelfCoopContext.DesiredLocalPlayerCount)

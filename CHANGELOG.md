@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [v1.09] - 2026-03-21
+
+### Added
+- 新增手柄组合键：选角界面 `Y` 切换当前角色瓦库，`LT + Y` 切换全体瓦库开关。
+- 选角界面新增手柄热键图标提示（`LT + 上下左右`、`Y`、`LT + Y`），并与原版一致仅在手柄模式显示。
+- 完善 LT 组合输入链路：LT 持有期间全拦截原生手柄输入，释放时按是否使用组合决定是否回放原 LT 行为。
+
 ## [v1.06] - 2026-03-20
 
 ### Changed
@@ -54,7 +61,8 @@
 - 建立本地多控最小可用闭环。
 - 基础输入切换、关键同步链路与核心补丁框架落地。
 
-[Unreleased]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/compare/v1.06...HEAD
+[Unreleased]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/compare/v1.09...HEAD
+[v1.09]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v1.09
 [v1.06]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v1.06
 [v1.05]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v1.05
 [v0.1.9]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v0.1.9

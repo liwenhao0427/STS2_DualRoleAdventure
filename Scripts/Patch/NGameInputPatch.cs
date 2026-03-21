@@ -14,6 +14,8 @@ internal static class NGameInputPatch
     [HarmonyPostfix]
     private static void Postfix(InputEvent inputEvent)
     {
+        LocalGamepadAxisRouter.EnsurePollerAttached();
+
         if (inputEvent is not InputEventKey keyEvent || !keyEvent.IsReleased())
         {
             return;
