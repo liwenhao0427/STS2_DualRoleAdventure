@@ -52,7 +52,7 @@ internal static class NCharacterSelectScreenSelectCharacterPatch
         }
 
         LocalMultiControlLogger.Warn("本地多控当前禁用随机角色：检测到随机资源缺失风险。");
-        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create("本地多控暂不支持随机角色"));
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create(LocalModText.RandomCharacterNotSupported));
         return false;
     }
 }

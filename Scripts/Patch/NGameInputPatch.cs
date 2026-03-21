@@ -50,7 +50,7 @@ internal static class NGameInputPatch
             {
                 int targetCount = LocalSelfCoopContext.DesiredLocalPlayerCount;
                 LocalMultiControlLogger.Info($"检测到人数热键 {hotkeyLabel}，本地人数已调整为 {targetCount}");
-                NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"本地人数: {targetCount}"));
+                NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create(LocalModText.LocalPlayerCount(targetCount)));
             }
 
             return;

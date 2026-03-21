@@ -152,12 +152,12 @@
 - 不要把多个输入源硬编码到单场景生命周期里。
 - 不要在高频回调中做重反射与大对象分配。
 
-## 13. PCK 导出与复制（部署）
+## 13. 产物复制（部署）
 
-- 手动导出：在 Godot 中导出 `LocalMultiControl.pck`。
-- 本项目内置复制脚本：`copy_pck_to_game.ps1`。
-- 默认来源：`src/Mods/LocalMultiControl/LocalMultiControl.pck`
-- 默认目标：`E:\SteamLibrary\steamapps\common\Slay the Spire 2\mods\LocalMultiControl\LocalMultiControl.pck`
+- 本项目当前为纯代码 Mod，不再依赖 pck 产物。
+- 本项目内置复制脚本：`copy_pck_to_game.ps1`（脚本名保留兼容，实际仅复制 dll + json）。
+- 默认来源：`src/Mods/LocalMultiControl/DualRoleAdventure.dll` 与 `src/Mods/LocalMultiControl/DualRoleAdventure.json`
+- 默认目标：`E:\SteamLibrary\steamapps\common\Slay the Spire 2\mods\DualRoleAdventure\`
 - 执行示例：`powershell -ExecutionPolicy Bypass -File .\copy_pck_to_game.ps1`
 
 ## 14. 规则文件兼容
@@ -168,16 +168,15 @@
 ## 15. 会话结束前默认部署动作（新增）
 
 - 当本次会话包含代码修改，且 `dotnet build LocalMultiControl.csproj -c Debug` 成功并产出项目根 `DualRoleAdventure.dll` 后，代理在会话结束前默认执行：`powershell -ExecutionPolicy Bypass -File .\copy_pck_to_game.ps1`。
-- 该步骤用于将最新 pck/dll 应用到游戏 `mods` 目录，作为联调默认收尾动作。
+- 该步骤用于将最新 `dll + json` 应用到游戏 `mods` 目录，作为联调默认收尾动作。
 - 若用户在当次会话中明确说明“不执行部署脚本”，则跳过此步骤。
 
-## 16. PCK 生成与复制执行顺序（新增）
+## 16. 构建与复制执行顺序（新增）
 
-- `copy_pck_to_game.ps1` 保持为“仅复制文件”脚本，不在脚本内执行 Godot 打包。
-- 当会话内完成代码修改且 DLL 打包成功后，先执行以下命令生成 pck：
-  - `& "C:\Users\temp\项目\杀戮尖塔2Mod\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64.exe" --path . --export-pack "Windows Desktop" DualRoleAdventure.pck`
-- pck 生成成功后，再执行复制脚本：
+- `copy_pck_to_game.ps1` 保持为“仅复制文件”脚本（仅复制 `dll + json`）。
+- 当会话内完成代码修改且 DLL 构建成功后，直接执行复制脚本：
   - `powershell -ExecutionPolicy Bypass -File .\copy_pck_to_game.ps1`
+- 不再执行 Godot `--export-pack` 打包步骤。
 
 ## 17. 复制后自动启动游戏（新增）
 
@@ -191,15 +190,14 @@
 
 - 当本次会话**未修改代码文件**时，跳过部署与启动流程。
 - 代码文件指 `Scripts/` 下的 `*.cs`（含其子目录）；若仅修改 `README.md`、`AGENTS.md`、`task.md`、`.editorconfig`、`.gitattributes` 等文档/配置文件，不执行以下步骤：
-  - Godot `--export-pack` 导出
   - `copy_pck_to_game.ps1` 复制
   - `Start-Process "steam://rungameid/2868840"` 自动启动游戏
 - 若会话中同时存在代码改动与文档改动，仍按既有规则执行部署与启动（除非用户明确要求跳过）。
 
 ## 17. 发版流程
 
-- 默认支持“快速发版”：当用户明确要求直接发 Release 时，允许基于当前项目根已有产物直接发布，不强制重新编译或重新导出 pck。
-- 快速发版使用文件：`DualRoleAdventure.dll` 与 `DualRoleAdventure.pck`（均位于项目根）。
+- 默认支持“快速发版”：当用户明确要求直接发 Release 时，允许基于当前项目根已有产物直接发布，不强制重新编译。
+- 快速发版使用文件：`DualRoleAdventure.dll` 与 `DualRoleAdventure.json`（均位于项目根）。
 - 发布时必须同时发布与 DLL 同名的 JSON 配置文件（例如：`DualRoleAdventure.json`），格式参考其他 mod 配置：
   ```json
   {
@@ -208,14 +206,14 @@
     "author": "LocalMultiControl",
     "description": "实现联机转本地多控能力，使单机支持多角色/多输入控制",
     "version": "v1.01",
-    "has_pck": true,
+    "has_pck": false,
     "has_dll": true,
     "dependencies": [],
     "affects_gameplay": true
   }
   ```
-- 发布与部署时需保证 `dll + pck + json` 三件套同步到游戏 `mods` 目录，避免仅更新二进制导致版本识别异常。
-- 仅在用户明确要求“重编译/重打包”或当前产物缺失时，才执行 `dotnet build` 与 Godot 导出。
+- 发布与部署时需保证 `dll + json` 同步到游戏 `mods` 目录，避免仅更新二进制导致版本识别异常。
+- 仅在用户明确要求“重编译”或当前产物缺失时，才执行 `dotnet build`。
 - 发布时照常创建语义化 tag 与 GitHub Release，填写主要变更说明。
 
 ## 19. 玩家更新文档维护（新增）

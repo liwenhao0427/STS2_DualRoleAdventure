@@ -7,13 +7,12 @@ using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
-using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
-using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Nodes.Screens.PauseMenu;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Patch;
@@ -22,8 +21,6 @@ namespace LocalMultiControl.Scripts.Patch;
 internal static class NPauseMenuRestartRoomPatch
 {
     private const string RestartRoomButtonName = "LocalRestartRoomButton";
-    private const string RestartRoomTextZh = "重启房间";
-    private const string RestartRoomTextEn = "Restart Room";
 
     private static bool _isRestarting;
 
@@ -65,7 +62,7 @@ internal static class NPauseMenuRestartRoomPatch
                 Callable.From<NButton>((_) => OnRestartRoomPressed(__instance)));
 
             MegaLabel? label = restartRoomButton.GetNodeOrNull<MegaLabel>("Label");
-            label?.SetTextAutoSize(GetRestartRoomText());
+            label?.SetTextAutoSize(LocalModText.RestartRoomButton);
 
             buttonContainer.AddChild(restartRoomButton);
             buttonContainer.MoveChild(restartRoomButton, saveAndQuitButton.GetIndex());
@@ -91,13 +88,6 @@ internal static class NPauseMenuRestartRoomPatch
         }
 
         return true;
-    }
-
-    private static string GetRestartRoomText()
-    {
-        return LocManager.Instance.Language == "eng"
-            ? RestartRoomTextEn
-            : RestartRoomTextZh;
     }
 
     private static void RefreshFocusNeighbors(Control buttonContainer)
@@ -148,13 +138,20 @@ internal static class NPauseMenuRestartRoomPatch
             }
 
             await game.ReturnToMainMenu();
-
-            Callable.From(TryQuickLoadFromMainMenu).CallDeferred();
+            bool loaded = await LocalQuickRestartLoader.TryLoadDirectlyAsync();
+            if (!loaded)
+            {
+                game.AddChildSafely(NFullscreenTextVfx.Create(LocalModText.RestartRoomFailed));
+            }
         }
         catch (Exception exception)
         {
             _isRestarting = false;
             LocalMultiControlLogger.Error($"ESC 重启房间失败: {exception}");
+        }
+        finally
+        {
+            _isRestarting = false;
         }
     }
 
@@ -171,40 +168,5 @@ internal static class NPauseMenuRestartRoomPatch
 
         NBackButton? backButton = AccessTools.Field(typeof(NPauseMenu), "_backButton")?.GetValue(pauseMenu) as NBackButton;
         backButton?.Disable();
-    }
-
-    private static void TryQuickLoadFromMainMenu()
-    {
-        try
-        {
-            NGame? game = NGame.Instance;
-            if (game == null)
-            {
-                LocalMultiControlLogger.Warn("快速重启失败：NGame.Instance 为空。");
-                _isRestarting = false;
-                return;
-            }
-
-            NMainMenu? mainMenu = game.MainMenu;
-            if (mainMenu == null)
-            {
-                LocalMultiControlLogger.Warn("快速重启失败：主菜单尚未就绪。");
-                _isRestarting = false;
-                return;
-            }
-
-            NMultiplayerSubmenu multiplayerSubmenu = mainMenu.OpenMultiplayerSubmenu();
-            AccessTools.Method(typeof(NMultiplayerSubmenu), "StartLoad")
-                ?.Invoke(multiplayerSubmenu, new object?[] { null });
-            LocalMultiControlLogger.Info("已触发快速重启：自动进入多人读档。");
-        }
-        catch (Exception exception)
-        {
-            LocalMultiControlLogger.Error($"主菜单自动读档失败: {exception}");
-        }
-        finally
-        {
-            _isRestarting = false;
-        }
     }
 }

@@ -187,7 +187,7 @@ internal static class LocalCharacterSelectCountButtons
         }
 
         int targetCount = LocalSelfCoopContext.DesiredLocalPlayerCount;
-        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"本地人数: {targetCount}"));
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create(LocalModText.LocalPlayerCount(targetCount)));
         LocalMultiControlLogger.Info($"通过实体按钮调整本地人数成功: {targetCount}");
 
         NCharacterSelectScreen? activeScreen = LocalSelfCoopContext.ActiveCharacterSelectScreen;

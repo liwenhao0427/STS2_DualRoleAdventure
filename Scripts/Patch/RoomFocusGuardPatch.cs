@@ -32,7 +32,7 @@ internal static class NRestSiteRoomReadyGuardPatch
 
             if (playerCount > 4)
             {
-                NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create("休息区提示：若未显示选项，请先按 R 或 ] 切换一次角色"));
+                NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create(LocalModText.RestSiteFocusHint));
                 LocalMultiControlLogger.Warn($"[待修复] 休息区5人以上首帧可能不显示选项，已弹出手动切换提示。players={playerCount}");
             }
 
