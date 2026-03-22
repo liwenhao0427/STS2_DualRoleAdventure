@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using HarmonyLib;
+using LocalMultiControl.Scripts.Models.Relics;
 using LocalMultiControl.Scripts.Patch;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
@@ -24,7 +25,6 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Capstones;
 using MegaCrit.Sts2.Core.Nodes.TopBar;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
@@ -50,6 +50,7 @@ internal static class LocalMultiControlRuntime
 
     public static void OnRunLaunched(RunState runState)
     {
+        LocalWakuuRelicLocalization.Initialize();
         LocalMultiControlLogger.Info("检测到 RunManager.Launch，开始初始化本地多控会话。");
         if (LocalSelfCoopContext.IsEnabled)
         {
@@ -213,7 +214,7 @@ internal static class LocalMultiControlRuntime
 
             bool hasPlayableCards = PileType.Hand.GetPile(player).Cards.Any((card) => card.CanPlay());
 
-            if (player.GetRelic<WhisperingEarring>() != null && hasPlayableCards)
+            if (LocalWakuuRelicRuntime.HasWakuuRelic(player) && hasPlayableCards)
             {
                 anyWakuuPlayerHasPlayableCards = true;
                 LocalWakuuRelicRuntime.TryScheduleWatchdog(player, "combat-watchdog");
@@ -364,17 +365,17 @@ internal static class LocalMultiControlRuntime
                 continue;
             }
 
-            if (player.GetRelic<WhisperingEarring>() != null)
+            if (LocalWakuuRelicRuntime.TryGetWakuuRelic(player) != null)
             {
                 continue;
             }
 
-            RelicModel relic = ModelDb.Relic<WhisperingEarring>().ToMutable();
+            RelicModel relic = ModelDb.Relic<LocalWakuuStarterRelic>().ToMutable();
             relic.FloorAddedToDeck = Math.Max(1, runState.TotalFloor);
             player.AddRelicInternal(relic);
             SaveManager.Instance.MarkRelicAsSeen(relic);
             await relic.AfterObtained();
-            LocalMultiControlLogger.Info($"已为瓦库角色自动发放低语耳环: player={playerId}");
+            LocalMultiControlLogger.Info($"已为瓦库角色自动发放瓦库专用遗物: player={playerId}, relic={relic.Id.Entry}");
         }
     }
 

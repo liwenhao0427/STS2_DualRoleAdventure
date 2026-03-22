@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using LocalMultiControl.Scripts.Models.Relics;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
-using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
@@ -27,12 +28,22 @@ internal static class LocalWakuuRelicRuntime
     private static readonly Dictionary<string, long> _watchdogLastRunAt = new();
     private static readonly HashSet<string> _watchdogInFlight = new();
 
+    public static LocalWakuuStarterRelic? TryGetWakuuRelic(Player player)
+    {
+        return player.GetRelicById(ModelDb.GetId<LocalWakuuStarterRelic>()) as LocalWakuuStarterRelic;
+    }
+
+    public static bool HasWakuuRelic(Player player)
+    {
+        return TryGetWakuuRelic(player) != null;
+    }
+
     public static async Task ExecuteBeforePlayPhaseStartAsync(
-        WhisperingEarring relic,
+        LocalWakuuStarterRelic relic,
         PlayerChoiceContext choiceContext,
         Player player)
     {
-        if (player != relic.Owner)
+        if (!LocalSelfCoopContext.IsEnabled || player != relic.Owner)
         {
             return;
         }
@@ -103,7 +114,7 @@ internal static class LocalWakuuRelicRuntime
             return false;
         }
 
-        WhisperingEarring? relic = player.GetRelic<WhisperingEarring>();
+        LocalWakuuStarterRelic? relic = TryGetWakuuRelic(player);
         if (relic == null)
         {
             return false;
@@ -136,7 +147,7 @@ internal static class LocalWakuuRelicRuntime
 
     private static async Task RunWatchdogAsync(
         string key,
-        WhisperingEarring relic,
+        LocalWakuuStarterRelic relic,
         Player player,
         CombatState combatState,
         string source)
@@ -156,7 +167,7 @@ internal static class LocalWakuuRelicRuntime
                 return;
             }
 
-            if (player.Creature.CombatState != combatState || player.GetRelic<WhisperingEarring>() == null)
+            if (player.Creature.CombatState != combatState || !HasWakuuRelic(player))
             {
                 return;
             }

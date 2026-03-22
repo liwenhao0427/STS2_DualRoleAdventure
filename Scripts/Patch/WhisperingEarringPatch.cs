@@ -1,8 +1,4 @@
-using System.Threading.Tasks;
 using HarmonyLib;
-using LocalMultiControl.Scripts.Runtime;
-using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models.Relics;
 
 namespace LocalMultiControl.Scripts.Patch;
@@ -11,18 +7,9 @@ namespace LocalMultiControl.Scripts.Patch;
 internal static class WhisperingEarringPatch
 {
     [HarmonyPrefix]
-    private static bool Prefix(
-        WhisperingEarring __instance,
-        PlayerChoiceContext choiceContext,
-        Player player,
-        ref Task __result)
+    private static bool Prefix()
     {
-        if (!LocalSelfCoopContext.IsEnabled || player != __instance.Owner)
-        {
-            return true;
-        }
-
-        __result = LocalWakuuRelicRuntime.ExecuteBeforePlayPhaseStartAsync(__instance, choiceContext, player);
-        return false;
+        // 保持原版低语耳环行为，避免与本地多控的瓦库专用遗物混用导致持续接管。
+        return true;
     }
 }
