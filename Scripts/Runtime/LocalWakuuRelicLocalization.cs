@@ -12,17 +12,35 @@ internal static class LocalWakuuRelicLocalization
 
     public static void Initialize()
     {
-        InjectLocalization();
+        LocManager? locManager = LocManager.Instance;
+        if (locManager == null)
+        {
+            // 初始化早期 LocManager 可能尚未就绪，延后到运行期重试。
+            return;
+        }
+
+        InjectLocalization(locManager);
         if (_localeCallbackSubscribed)
         {
             return;
         }
 
-        LocManager.Instance.SubscribeToLocaleChange(InjectLocalization);
+        locManager.SubscribeToLocaleChange(InjectLocalization);
         _localeCallbackSubscribed = true;
     }
 
     private static void InjectLocalization()
+    {
+        LocManager? locManager = LocManager.Instance;
+        if (locManager == null)
+        {
+            return;
+        }
+
+        InjectLocalization(locManager);
+    }
+
+    private static void InjectLocalization(LocManager locManager)
     {
         try
         {
@@ -38,7 +56,7 @@ internal static class LocalWakuuRelicLocalization
                     "It does not whisper. It simply holds your turn steady.")
             };
 
-            LocManager.Instance.GetTable("relics").MergeWith(customEntries);
+            locManager.GetTable("relics").MergeWith(customEntries);
         }
         catch (Exception exception)
         {

@@ -50,6 +50,7 @@ internal static class LocalMultiControlRuntime
 
     public static void OnRunLaunched(RunState runState)
     {
+        LocalWakuuRelicLocalization.Initialize();
         LocalMultiControlLogger.Info("检测到 RunManager.Launch，开始初始化本地多控会话。");
         if (LocalSelfCoopContext.IsEnabled)
         {

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -25,30 +26,52 @@ internal static class LavaRockPatch
             return true;
         }
 
+        if (player.RunState == null)
+        {
+            __result = false;
+            return false;
+        }
+
         if (room == null || room.RoomType != RoomType.Boss)
         {
             __result = false;
             return false;
         }
 
-        if (__instance.Owner.RunState.CurrentActIndex != 0 || __instance.HasTriggered)
+        if (player.RunState.CurrentActIndex != 0)
         {
             __result = false;
             return false;
         }
 
-        __instance.Flash();
-        int extraRelicCount = __instance.DynamicVars["Relics"].IntValue;
+        List<LavaRock> pendingLavaRocks = player.RunState.Players
+            .Select((member) => member.GetRelic<LavaRock>())
+            .Where((relic) => relic != null && !relic.HasTriggered)
+            .Cast<LavaRock>()
+            .ToList();
+        if (pendingLavaRocks.Count == 0)
+        {
+            __result = false;
+            return false;
+        }
+
+        int extraRelicCount = pendingLavaRocks[0].DynamicVars["Relics"].IntValue;
         for (int i = 0; i < extraRelicCount; i++)
         {
             rewards.Add(new RelicReward(player));
         }
 
-        __instance.HasTriggered = true;
-        __instance.Status = RelicStatus.Disabled;
+        foreach (LavaRock lavaRock in pendingLavaRocks)
+        {
+            lavaRock.Flash();
+            lavaRock.HasTriggered = true;
+            lavaRock.Status = RelicStatus.Disabled;
+        }
+
         __result = true;
+        string owners = string.Join(",", pendingLavaRocks.Select((relic) => relic.Owner.NetId));
         LocalMultiControlLogger.Info(
-            $"本地多控已修正熔岩石触发归属: owner={__instance.Owner.NetId}, rewardPlayer={player.NetId}, added={extraRelicCount}");
+            $"本地多控已按队伍熔岩石触发首领额外遗物: rewardPlayer={player.NetId}, owners={owners}, added={extraRelicCount}");
         return false;
     }
 }
