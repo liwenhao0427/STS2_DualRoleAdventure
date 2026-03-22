@@ -470,7 +470,7 @@ internal static class LocalMultiControlRuntime
         LocalMultiControlLogger.Info($"检测到角色 {endedPlayerId} 结束回合，自动切换到下一位。");
         Callable.From(delegate
         {
-            if (TrySwitchToNextOperableNonWakuuPlayerWhenAllWakuuDone(endedPlayerId, "auto-end-turn-all-vakuu-done"))
+            if (TrySwitchToNextOperableNonWakuuPlayerWhenAllWakuuNoPlayableCards(endedPlayerId, "auto-end-turn-all-vakuu-no-cards"))
             {
                 return;
             }
@@ -479,7 +479,7 @@ internal static class LocalMultiControlRuntime
         }).CallDeferred();
     }
 
-    private static bool TrySwitchToNextOperableNonWakuuPlayerWhenAllWakuuDone(ulong currentPlayerId, string source)
+    private static bool TrySwitchToNextOperableNonWakuuPlayerWhenAllWakuuNoPlayableCards(ulong currentPlayerId, string source)
     {
         NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
         CombatState? combatState = combatUi != null ? TryGetCombatState(combatUi) : null;
@@ -502,7 +502,8 @@ internal static class LocalMultiControlRuntime
             }
 
             hasWakuuPlayer = true;
-            if (!CombatManager.Instance.IsPlayerReadyToEndTurn(player))
+            bool hasPlayableCards = PileType.Hand.GetPile(player).Cards.Any((card) => card.CanPlay());
+            if (hasPlayableCards)
             {
                 return false;
             }
