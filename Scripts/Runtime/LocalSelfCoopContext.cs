@@ -22,6 +22,7 @@ internal static class LocalSelfCoopContext
 {
     private const int MinLocalPlayerCount = 2;
     private const int MaxLocalPlayerCount = 12;
+    private const int MaxLocalAscensionLevel = 10;
 
     private static readonly List<ulong> _localPlayerIds = new() { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
     private static readonly HashSet<ulong> _wakuuPlayerIds = new();
@@ -383,6 +384,22 @@ internal static class LocalSelfCoopContext
         return ReconcileLobbyPlayerCount("bootstrap-local-players");
     }
 
+    public static void EnsureLocalAscensionOptionsUnlocked(NCharacterSelectScreen screen, string source)
+    {
+        if (!IsEnabled)
+        {
+            return;
+        }
+
+        StartRunLobby? lobby = AccessTools.Field(typeof(NCharacterSelectScreen), "_lobby")?.GetValue(screen) as StartRunLobby;
+        if (lobby == null)
+        {
+            return;
+        }
+
+        EnsureLobbyAscensionCapacity(lobby, source);
+    }
+
     private static bool ReconcileLobbyPlayerCount(string source)
     {
         if (!IsEnabled || NetService == null || ActiveCharacterSelectScreen == null)
@@ -405,7 +422,7 @@ internal static class LocalSelfCoopContext
 
         UnlockState unlockState = SaveManager.Instance.GenerateUnlockStateFromProgress();
         SerializableUnlockState serializableUnlockState = unlockState.ToSerializable();
-        int maxAscension = SaveManager.Instance.Progress.MaxMultiplayerAscension;
+        int maxAscension = MaxLocalAscensionLevel;
 
         List<ulong> targetPlayerIds = _localPlayerIds.Take(targetCount).ToList();
 
@@ -467,10 +484,52 @@ internal static class LocalSelfCoopContext
         EnsureLobbySenderContext(source);
         SyncCharacterSelectHighlight();
         TrimWakuuPlayerIdsToConfiguredPlayers();
+        EnsureLobbyAscensionCapacity(lobby, source);
 
         LocalMultiControlLogger.Info(
             $"澶у巺鏈湴鐜╁鏁板凡鍚屾: target={targetCount}, actual={GetActiveLobbyLocalPlayerIds().Count}, source={source}");
         return true;
+    }
+
+    private static void EnsureLobbyAscensionCapacity(StartRunLobby lobby, string source)
+    {
+        bool changed = false;
+
+        for (int i = 0; i < lobby.Players.Count; i++)
+        {
+            LobbyPlayer player = lobby.Players[i];
+            if (player.maxMultiplayerAscensionUnlocked >= MaxLocalAscensionLevel)
+            {
+                continue;
+            }
+
+            player.maxMultiplayerAscensionUnlocked = MaxLocalAscensionLevel;
+            lobby.Players[i] = player;
+            lobby.LobbyListener.PlayerChanged(player);
+            changed = true;
+        }
+
+        int currentMaxAscension = lobby.MaxAscension;
+        if (currentMaxAscension < MaxLocalAscensionLevel)
+        {
+            AccessTools.Field(typeof(StartRunLobby), "<MaxAscension>k__BackingField")
+                ?.SetValue(lobby, MaxLocalAscensionLevel);
+            lobby.LobbyListener.MaxAscensionChanged();
+            changed = true;
+        }
+
+        int clampedAscension = Math.Clamp(lobby.Ascension, 0, MaxLocalAscensionLevel);
+        if (lobby.Ascension != clampedAscension)
+        {
+            lobby.SyncAscensionChange(clampedAscension);
+            changed = true;
+        }
+
+        if (changed)
+        {
+            LocalMultiControlLogger.Info(
+                $"已为本地多控开放完整进阶难度(0-{MaxLocalAscensionLevel})：players={lobby.Players.Count}, source={source}");
+        }
     }
 
     private static void EnsureLobbyMaxCapacity(StartRunLobby lobby)

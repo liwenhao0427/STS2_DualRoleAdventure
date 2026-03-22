@@ -22,6 +22,7 @@ internal static class NCharacterSelectScreenOpenPatch
 
         LocalSelfCoopContext.ActiveCharacterSelectScreen = __instance;
         LocalSelfCoopContext.EnsureLobbySenderContext("character-select-opened");
+        LocalSelfCoopContext.EnsureLocalAscensionOptionsUnlocked(__instance, "character-select-opened");
 
         NCharacterSelectButton? randomButton =
             AccessTools.Field(typeof(NCharacterSelectScreen), "_randomCharacterButton")?.GetValue(__instance) as NCharacterSelectButton;

@@ -470,6 +470,11 @@ internal static class LocalMultiControlRuntime
         LocalMultiControlLogger.Info($"检测到角色 {endedPlayerId} 结束回合，自动切换到下一位。");
         Callable.From(delegate
         {
+            if (TrySwitchToNextOperableNonWakuuPlayer(endedPlayerId, "auto-end-turn-non-vakuu"))
+            {
+                return;
+            }
+
             SwitchNextControlledPlayer("auto-end-turn");
         }).CallDeferred();
     }
@@ -553,6 +558,65 @@ internal static class LocalMultiControlRuntime
 
         ApplyControlContext(source);
         return true;
+    }
+
+    private static bool TrySwitchToNextOperableNonWakuuPlayer(ulong currentPlayerId, string source)
+    {
+        NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+        if (combatUi == null)
+        {
+            return false;
+        }
+
+        CombatState? combatState = TryGetCombatState(combatUi);
+        if (combatState == null)
+        {
+            return false;
+        }
+
+        List<ulong> combatPlayerIds = combatState.Players.Select((player) => player.NetId).Distinct().ToList();
+        if (combatPlayerIds.Count < 2)
+        {
+            return false;
+        }
+
+        int currentIndex = combatPlayerIds.IndexOf(currentPlayerId);
+        if (currentIndex < 0)
+        {
+            currentIndex = 0;
+        }
+
+        for (int offset = 1; offset < combatPlayerIds.Count; offset++)
+        {
+            int targetIndex = (currentIndex + offset) % combatPlayerIds.Count;
+            ulong targetPlayerId = combatPlayerIds[targetIndex];
+            Player? targetPlayer = combatState.GetPlayer(targetPlayerId);
+            if (targetPlayer?.Creature == null || !targetPlayer.Creature.IsAlive)
+            {
+                continue;
+            }
+
+            if (CombatManager.Instance.IsPlayerReadyToEndTurn(targetPlayer))
+            {
+                continue;
+            }
+
+            if (LocalSelfCoopContext.IsWakuuEnabled(targetPlayerId))
+            {
+                continue;
+            }
+
+            if (!Session.TrySetCurrentPlayer(targetPlayerId))
+            {
+                return false;
+            }
+
+            ApplyControlContext(source);
+            LocalMultiControlLogger.Info($"结束回合后优先切换到可操作非瓦库角色: {currentPlayerId} -> {targetPlayerId}");
+            return true;
+        }
+
+        return false;
     }
 
     private static CombatState? TryGetCombatState(NCombatUi combatUi)

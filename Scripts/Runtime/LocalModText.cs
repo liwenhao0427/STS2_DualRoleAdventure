@@ -60,5 +60,5 @@ internal static class LocalModText
         "休息区提示：若未显示选项，请先按 R 或 ] 切换一次角色",
         "Rest site tip: if options are missing, press R or ] to switch once");
 
-    public static string GlobalWakuuLabel => Select("全瓦库", "All Wakuu");
+    public static string GlobalWakuuLabel => Select("全瓦库", "All Vakuu");
 }
