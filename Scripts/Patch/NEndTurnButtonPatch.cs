@@ -24,7 +24,12 @@ internal static class NEndTurnButtonPatch
             return true;
         }
 
-        LocalMultiControlRuntime.TryManualEndTurnAutoCloseAllPlayers();
+        bool handled = LocalMultiControlRuntime.TryManualEndTurnAutoCloseAllPlayers();
+        if (handled)
+        {
+            LocalMultiControlLogger.Info("回合结束点击已按“全员无牌可出”规则处理，跳过原始结束逻辑。");
+            return false;
+        }
 
         Player? me = LocalContext.GetMe(combatState);
         if (me != null && CombatManager.Instance.IsPlayerReadyToEndTurn(me))

@@ -222,34 +222,34 @@ internal static class LocalMultiControlRuntime
         }
     }
 
-    public static void TryManualEndTurnAutoCloseAllPlayers()
+    public static bool TryManualEndTurnAutoCloseAllPlayers()
     {
         if (!LocalSelfCoopContext.IsEnabled || !RunManager.Instance.IsInProgress || !CombatManager.Instance.IsInProgress)
         {
-            return;
+            return false;
         }
 
         NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
         if (combatUi == null)
         {
-            return;
+            return false;
         }
 
         NPlayerHand hand = combatUi.Hand;
         if (hand.InCardPlay || hand.IsInCardSelection || (NTargetManager.Instance?.IsInSelection ?? false))
         {
-            return;
+            return false;
         }
 
         CombatState? combatState = TryGetCombatState(combatUi);
         if (combatState == null || combatState.CurrentSide != CombatSide.Player)
         {
-            return;
+            return false;
         }
 
         if (RunManager.Instance.ActionQueueSynchronizer.CombatState != ActionSynchronizerCombatState.PlayPhase)
         {
-            return;
+            return false;
         }
 
         RefreshAutoEndTrackingForCombat(combatState);
@@ -265,11 +265,11 @@ internal static class LocalMultiControlRuntime
             if (hasPlayableCards)
             {
                 LocalMultiControlLogger.Info($"玩家主动结束回合时检测到仍有可出牌角色，不触发全员结束: round={combatState.RoundNumber}");
-                return;
+                return false;
             }
         }
 
-        TryEndAllPlayersWhenNoCards(combatState, "manual-end-turn");
+        return TryEndAllPlayersWhenNoCards(combatState, "manual-end-turn");
     }
 
     private static bool TryEndAllPlayersWhenNoCards(CombatState combatState, string source)
@@ -512,7 +512,17 @@ internal static class LocalMultiControlRuntime
                 return;
             }
 
-            SwitchNextControlledPlayer("auto-end-turn");
+            if (TrySwitchToNextPlayablePlayer(endedPlayerId, "auto-end-turn-next-playable"))
+            {
+                return;
+            }
+
+            NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+            CombatState? combatState = combatUi != null ? TryGetCombatState(combatUi) : null;
+            if (combatState != null)
+            {
+                TryEndAllPlayersWhenNoCards(combatState, "auto-end-turn-fallback");
+            }
         }).CallDeferred();
     }
 
@@ -822,6 +832,66 @@ internal static class LocalMultiControlRuntime
 
             ApplyControlContext(source);
             LocalMultiControlLogger.Info($"结束回合后优先切换到可操作非瓦库角色: {currentPlayerId} -> {targetPlayerId}");
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TrySwitchToNextPlayablePlayer(ulong currentPlayerId, string source)
+    {
+        NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+        if (combatUi == null)
+        {
+            return false;
+        }
+
+        CombatState? combatState = TryGetCombatState(combatUi);
+        if (combatState == null)
+        {
+            return false;
+        }
+
+        List<ulong> combatPlayerIds = combatState.Players.Select((player) => player.NetId).Distinct().ToList();
+        if (combatPlayerIds.Count < 2)
+        {
+            return false;
+        }
+
+        int currentIndex = combatPlayerIds.IndexOf(currentPlayerId);
+        if (currentIndex < 0)
+        {
+            currentIndex = 0;
+        }
+
+        for (int offset = 1; offset < combatPlayerIds.Count; offset++)
+        {
+            int targetIndex = (currentIndex + offset) % combatPlayerIds.Count;
+            ulong targetPlayerId = combatPlayerIds[targetIndex];
+            Player? targetPlayer = combatState.GetPlayer(targetPlayerId);
+            if (targetPlayer?.Creature == null || !targetPlayer.Creature.IsAlive)
+            {
+                continue;
+            }
+
+            if (CombatManager.Instance.IsPlayerReadyToEndTurn(targetPlayer))
+            {
+                continue;
+            }
+
+            bool hasPlayableCards = PileType.Hand.GetPile(targetPlayer).Cards.Any((card) => card.CanPlay());
+            if (!hasPlayableCards)
+            {
+                continue;
+            }
+
+            if (!Session.TrySetCurrentPlayer(targetPlayerId))
+            {
+                return false;
+            }
+
+            ApplyControlContext(source);
+            LocalMultiControlLogger.Info($"结束回合后已切换到下一个可出牌角色: {currentPlayerId} -> {targetPlayerId}");
             return true;
         }
 
