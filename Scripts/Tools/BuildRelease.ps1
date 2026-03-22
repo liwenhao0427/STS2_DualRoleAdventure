@@ -1,5 +1,8 @@
 param(
-    [string]$Version
+    [string]$Version,
+    [switch]$PublishGitHub,
+    [switch]$PushGit,
+    [string]$ReleaseNotes
 )
 
 $ErrorActionPreference = "Stop"
@@ -92,3 +95,46 @@ Compress-Archive -Path (Join-Path $releaseDir "*") -DestinationPath $zipPath -Fo
 Write-Host "Release folder created: $releaseDir"
 Write-Host "Release zip created: $zipPath"
 Write-Host "Version updated to: $targetVersion"
+
+if ($PublishGitHub) {
+    $gitVersion = git --version 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        throw "git is required for PublishGitHub mode."
+    }
+
+    $ghVersion = gh --version 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh CLI is required for PublishGitHub mode."
+    }
+
+    git add "DualRoleAdventure.json" | Out-Null
+    git commit -m "发布 $targetVersion" 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Skip commit (maybe no changes to commit)."
+    }
+
+    git tag --list $targetVersion | Out-Null
+    $existingTag = git tag --list $targetVersion
+    if ([string]::IsNullOrWhiteSpace($existingTag)) {
+        git tag -a $targetVersion -m "Release $targetVersion"
+    }
+
+    if ($PushGit) {
+        git push origin master --follow-tags
+    }
+
+    $releaseBody = $ReleaseNotes
+    if ([string]::IsNullOrWhiteSpace($releaseBody)) {
+        $releaseBody = "Automated release $targetVersion"
+    }
+
+    gh release view $targetVersion 1>$null 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        gh release upload $targetVersion $zipPath --clobber
+        Write-Host "GitHub release asset updated for $targetVersion"
+    }
+    else {
+        gh release create $targetVersion $zipPath --title $targetVersion --notes $releaseBody
+        Write-Host "GitHub release created for $targetVersion"
+    }
+}
