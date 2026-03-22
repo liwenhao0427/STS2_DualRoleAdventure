@@ -470,13 +470,50 @@ internal static class LocalMultiControlRuntime
         LocalMultiControlLogger.Info($"检测到角色 {endedPlayerId} 结束回合，自动切换到下一位。");
         Callable.From(delegate
         {
-            if (TrySwitchToNextOperableNonWakuuPlayer(endedPlayerId, "auto-end-turn-non-vakuu"))
+            if (TrySwitchToNextOperableNonWakuuPlayerWhenAllWakuuDone(endedPlayerId, "auto-end-turn-all-vakuu-done"))
             {
                 return;
             }
 
             SwitchNextControlledPlayer("auto-end-turn");
         }).CallDeferred();
+    }
+
+    private static bool TrySwitchToNextOperableNonWakuuPlayerWhenAllWakuuDone(ulong currentPlayerId, string source)
+    {
+        NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+        CombatState? combatState = combatUi != null ? TryGetCombatState(combatUi) : null;
+        if (combatState == null)
+        {
+            return false;
+        }
+
+        bool hasWakuuPlayer = false;
+        foreach (Player player in combatState.Players)
+        {
+            if (player?.Creature == null || !player.Creature.IsAlive)
+            {
+                continue;
+            }
+
+            if (!LocalSelfCoopContext.IsWakuuEnabled(player.NetId))
+            {
+                continue;
+            }
+
+            hasWakuuPlayer = true;
+            if (!CombatManager.Instance.IsPlayerReadyToEndTurn(player))
+            {
+                return false;
+            }
+        }
+
+        if (!hasWakuuPlayer)
+        {
+            return false;
+        }
+
+        return TrySwitchToNextOperableNonWakuuPlayer(currentPlayerId, source);
     }
 
     private static bool CanSwitchDuringCombat(string source)
