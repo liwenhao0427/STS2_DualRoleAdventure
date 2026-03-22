@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
+using MegaCrit.Sts2.Core.ControllerInput;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -13,6 +14,7 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
@@ -467,11 +469,80 @@ internal static class RestSiteUiRefreshUtil
 
             AccessTools.Method(typeof(NRestSiteRoom), "EnableOptions")?.Invoke(room, null);
             AccessTools.Method(typeof(NRestSiteRoom), "AnimateDescriptionUp")?.Invoke(room, null);
+            EnsureControllerFocus(room, source);
             LocalMultiControlLogger.Info($"休息区选项可见性已恢复: source={source}, options={localOptionCount}");
         }
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"恢复休息区选项可见性失败: source={source}, error={exception.Message}");
+        }
+    }
+
+    private static void EnsureControllerFocus(NRestSiteRoom room, string source)
+    {
+        if (!(NControllerManager.Instance?.IsUsingController ?? false))
+        {
+            return;
+        }
+
+        try
+        {
+            AccessTools.Method(typeof(NRestSiteRoom), "UpdateNavigation")?.Invoke(room, null);
+            Control? focusTarget = FindFirstFocusableRestSiteButton(room) ?? FindFirstFocusableControl(room);
+            if (focusTarget == null)
+            {
+                LocalMultiControlLogger.Warn($"休息区手柄焦点恢复失败：未找到可聚焦控件。source={source}");
+                return;
+            }
+
+            focusTarget.GrabFocus();
+            LocalMultiControlLogger.Info($"休息区手柄焦点已恢复: source={source}, target={focusTarget.Name}");
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"恢复休息区手柄焦点失败: source={source}, error={exception.Message}");
+        }
+    }
+
+    private static Control? FindFirstFocusableRestSiteButton(Node root)
+    {
+        foreach (Node node in EnumerateDescendants(root))
+        {
+            if (node is NRestSiteButton button &&
+                button.Visible &&
+                button.FocusMode != Control.FocusModeEnum.None)
+            {
+                return button;
+            }
+        }
+
+        return null;
+    }
+
+    private static Control? FindFirstFocusableControl(Node root)
+    {
+        foreach (Node node in EnumerateDescendants(root))
+        {
+            if (node is Control control &&
+                control.Visible &&
+                control.FocusMode != Control.FocusModeEnum.None)
+            {
+                return control;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<Node> EnumerateDescendants(Node root)
+    {
+        foreach (Node child in root.GetChildren())
+        {
+            yield return child;
+            foreach (Node nested in EnumerateDescendants(child))
+            {
+                yield return nested;
+            }
         }
     }
 }

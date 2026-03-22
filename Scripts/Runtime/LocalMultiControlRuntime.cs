@@ -161,6 +161,11 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
+        if (LocalManualPlayGuard.IsActive)
+        {
+            return;
+        }
+
         NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
         if (combatUi == null)
         {
@@ -427,6 +432,27 @@ internal static class LocalMultiControlRuntime
         TrySetLocalPlayerId(RunManager.Instance.OneOffSynchronizer, playerId, nameof(RunManager.OneOffSynchronizer));
         TrySetLocalPlayerId(RunManager.Instance.TreasureRoomRelicSynchronizer, playerId, nameof(RunManager.TreasureRoomRelicSynchronizer));
         TrySetLocalPlayerId(RunManager.Instance.FlavorSynchronizer, playerId, nameof(RunManager.FlavorSynchronizer));
+    }
+
+    public static void AlignContextForActionOwner(ulong playerId, string source)
+    {
+        if (!RunManager.Instance.IsInProgress)
+        {
+            return;
+        }
+
+        if (LocalContext.NetId == playerId)
+        {
+            SyncRunSynchronizerLocalPlayerId(playerId);
+            return;
+        }
+
+        ulong? previousNetId = LocalContext.NetId;
+        LocalContext.NetId = playerId;
+        LocalSelfCoopContext.NetService?.SetCurrentSenderId(playerId);
+        SyncRunSynchronizerLocalPlayerId(playerId);
+        LocalMultiControlLogger.Warn(
+            $"检测到手动出牌上下文漂移，已强制校正: {previousNetId?.ToString() ?? "null"} -> {playerId}, source={source}");
     }
 
     private static void TrySetLocalPlayerId(object? target, ulong playerId, string componentName)

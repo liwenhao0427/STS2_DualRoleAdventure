@@ -92,6 +92,11 @@ internal static class LocalWakuuRelicRuntime
 
     public static bool TryScheduleWatchdog(Player player, string source)
     {
+        if (LocalManualPlayGuard.IsActive)
+        {
+            return false;
+        }
+
         CombatState? combatState = player.Creature.CombatState;
         if (combatState == null || combatState.CurrentSide != CombatSide.Player || CombatManager.Instance.IsOverOrEnding)
         {
@@ -141,6 +146,11 @@ internal static class LocalWakuuRelicRuntime
         bool hasNetService = LocalSelfCoopContext.NetService != null;
         try
         {
+            if (LocalManualPlayGuard.IsActive)
+            {
+                return;
+            }
+
             if (!RunManager.Instance.IsInProgress || !CombatManager.Instance.IsInProgress || CombatManager.Instance.IsOverOrEnding)
             {
                 return;
