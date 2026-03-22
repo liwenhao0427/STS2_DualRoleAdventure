@@ -192,6 +192,11 @@ internal static class LocalWakuuRelicRuntime
             {
                 LocalSelfCoopContext.NetService?.SetCurrentSenderId(previousSenderId);
             }
+
+            Callable.From(delegate
+            {
+                LocalMultiControlRuntime.TryAutoSwitchToNonWakuuOncePerRound($"wakuu-watchdog-{source}");
+            }).CallDeferred();
         }
     }
 
