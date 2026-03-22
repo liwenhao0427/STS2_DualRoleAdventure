@@ -41,6 +41,8 @@ internal static class LocalMultiControlRuntime
     private static readonly HashSet<int> _allPlayersAutoEndedRounds = new HashSet<int>();
     private static readonly HashSet<string> _wakuuToNonWakuuSwitchedRounds = new HashSet<string>();
     private static int _lastAutoEndCombatIdentity = -1;
+    private static string? _pendingWakuuAutoSwitchRoundKey;
+    private static string? _pendingWakuuAutoSwitchSource;
 
     public static LocalMultiSessionState SessionState => Session;
 
@@ -73,6 +75,8 @@ internal static class LocalMultiControlRuntime
         _allPlayersAutoEndedRounds.Clear();
         _wakuuToNonWakuuSwitchedRounds.Clear();
         _lastAutoEndCombatIdentity = -1;
+        _pendingWakuuAutoSwitchRoundKey = null;
+        _pendingWakuuAutoSwitchSource = null;
         LocalMerchantInventoryRuntime.Clear();
         LocalSelfCoopContext.Disable("RunManager.CleanUp");
         LocalMultiControlLogger.Info("RunManager.CleanUp 后已完成本地多控会话清理。");
@@ -163,11 +167,6 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
-        if (LocalManualPlayGuard.IsActive)
-        {
-            return;
-        }
-
         NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
         if (combatUi == null)
         {
@@ -192,6 +191,12 @@ internal static class LocalMultiControlRuntime
         }
 
         RefreshAutoEndTrackingForCombat(combatState);
+        TryConsumePendingWakuuAutoSwitch(combatState);
+        if (LocalManualPlayGuard.IsActive)
+        {
+            return;
+        }
+
         TryAutoSwitchFromWakuuWhenAllWakuuNoPlayableCards(combatState, "wakuu-no-playable-cards-tick");
 
         bool anyWakuuPlayerHasPlayableCards = false;
@@ -318,6 +323,8 @@ internal static class LocalMultiControlRuntime
         _wakuuAutoEndIssued.Clear();
         _allPlayersAutoEndedRounds.Clear();
         _wakuuToNonWakuuSwitchedRounds.Clear();
+        _pendingWakuuAutoSwitchRoundKey = null;
+        _pendingWakuuAutoSwitchSource = null;
         LocalMultiControlLogger.Info($"检测到战斗场次切换，重置瓦库自动结束回合状态: combat={combatIdentity}");
     }
 
@@ -655,6 +662,32 @@ internal static class LocalMultiControlRuntime
         return true;
     }
 
+    public static void RequestAutoSwitchToNonWakuuOncePerRound(string source)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || !RunManager.Instance.IsInProgress || !CombatManager.Instance.IsInProgress)
+        {
+            return;
+        }
+
+        NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+        CombatState? combatState = combatUi != null ? TryGetCombatState(combatUi) : null;
+        if (combatState == null || combatState.CurrentSide != CombatSide.Player)
+        {
+            return;
+        }
+
+        RefreshAutoEndTrackingForCombat(combatState);
+        string roundKey = BuildWakuuSwitchRoundKey(combatState.RoundNumber);
+        if (_wakuuToNonWakuuSwitchedRounds.Contains(roundKey))
+        {
+            return;
+        }
+
+        _pendingWakuuAutoSwitchRoundKey = roundKey;
+        _pendingWakuuAutoSwitchSource = source;
+        LocalMultiControlLogger.Info($"已登记瓦库自动切非瓦库请求: round={combatState.RoundNumber}, source={source}");
+    }
+
     private static bool CanSwitchDuringCombat(string source)
     {
         NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
@@ -798,6 +831,44 @@ internal static class LocalMultiControlRuntime
     private static string BuildWakuuSwitchRoundKey(int roundNumber)
     {
         return $"{_lastAutoEndCombatIdentity}:{roundNumber}";
+    }
+
+    private static void TryConsumePendingWakuuAutoSwitch(CombatState combatState)
+    {
+        string currentRoundKey = BuildWakuuSwitchRoundKey(combatState.RoundNumber);
+        if (_pendingWakuuAutoSwitchRoundKey == null)
+        {
+            return;
+        }
+
+        if (_pendingWakuuAutoSwitchRoundKey != currentRoundKey)
+        {
+            _pendingWakuuAutoSwitchRoundKey = null;
+            _pendingWakuuAutoSwitchSource = null;
+            return;
+        }
+
+        if (_wakuuToNonWakuuSwitchedRounds.Contains(currentRoundKey))
+        {
+            _pendingWakuuAutoSwitchRoundKey = null;
+            _pendingWakuuAutoSwitchSource = null;
+            return;
+        }
+
+        if (LocalManualPlayGuard.IsActive)
+        {
+            return;
+        }
+
+        string source = _pendingWakuuAutoSwitchSource ?? "wakuu-pending";
+        bool switched = TryAutoSwitchToNonWakuuOncePerRound($"{source}-retry");
+        if (!switched)
+        {
+            return;
+        }
+
+        _pendingWakuuAutoSwitchRoundKey = null;
+        _pendingWakuuAutoSwitchSource = null;
     }
 
     private static CombatState? TryGetCombatState(NCombatUi combatUi)

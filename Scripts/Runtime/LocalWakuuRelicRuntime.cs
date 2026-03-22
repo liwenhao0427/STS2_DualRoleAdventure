@@ -195,7 +195,7 @@ internal static class LocalWakuuRelicRuntime
 
             Callable.From(delegate
             {
-                LocalMultiControlRuntime.TryAutoSwitchToNonWakuuOncePerRound($"wakuu-watchdog-{source}");
+                LocalMultiControlRuntime.RequestAutoSwitchToNonWakuuOncePerRound($"wakuu-watchdog-{source}");
             }).CallDeferred();
         }
     }
