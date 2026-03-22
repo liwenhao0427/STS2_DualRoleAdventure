@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [v1.10] - 2026-03-22
+
+### Fixed
+- 修复瓦库自动切人漏触发：当所有瓦库角色都无牌可出时，新增逐帧兜底自动切到下一位可操作的非瓦库角色。
+- 修正瓦库英文文案拼写，统一为 `Vakuu`。
+
+### Changed
+- 瓦库开关提示文案统一中英本地化，并在鼠标与手柄切换路径共用同一提示：
+- 单角色提示为“瓦库将接管角色X操作 / Vakuu will control Player X”。
+- 全体提示为“瓦库将接管所有角色操作 / Vakuu will control all characters”。
+
 ## [v1.09] - 2026-03-21
 
 ### Added
@@ -61,7 +72,8 @@
 - 建立本地多控最小可用闭环。
 - 基础输入切换、关键同步链路与核心补丁框架落地。
 
-[Unreleased]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/compare/v1.09...HEAD
+[Unreleased]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/compare/v1.10...HEAD
+[v1.10]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v1.10
 [v1.09]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v1.09
 [v1.06]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v1.06
 [v1.05]: https://github.com/liwenhao0427/STS2_DualRoleAdventure/releases/tag/v1.05
