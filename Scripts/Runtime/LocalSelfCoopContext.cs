@@ -124,6 +124,11 @@ internal static class LocalSelfCoopContext
         }
 
         LocalMultiControlLogger.Info($"瓦库勾选状态变更: player={playerId}, enabled={enabled}, source={source}");
+        string slotLabel = GetSlotLabel(playerId);
+        string tip = enabled
+            ? LocalModText.VakuuControlsPlayer(slotLabel)
+            : LocalModText.VakuuReleasedPlayer(slotLabel);
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create(tip));
         MarkCurrentProfileTag();
         return true;
     }
@@ -154,6 +159,10 @@ internal static class LocalSelfCoopContext
 
         LocalMultiControlLogger.Info(
             $"全体瓦库开关变更: enabled={enabled}, count={targetPlayerIds.Count}, source={source}");
+        string tip = enabled
+            ? LocalModText.VakuuControlsAllPlayers()
+            : LocalModText.VakuuReleasedAllPlayers();
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create(tip));
         MarkCurrentProfileTag();
         return true;
     }

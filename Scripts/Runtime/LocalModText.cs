@@ -61,4 +61,24 @@ internal static class LocalModText
         "Rest site tip: if options are missing, press R or ] to switch once");
 
     public static string GlobalWakuuLabel => Select("全瓦库", "All Vakuu");
+
+    public static string VakuuControlsPlayer(string slotLabel)
+    {
+        return Select($"瓦库将接管角色{slotLabel}的操作", $"Vakuu will control {RoleSlot(slotLabel)}");
+    }
+
+    public static string VakuuReleasedPlayer(string slotLabel)
+    {
+        return Select($"瓦库已停止接管角色{slotLabel}的操作", $"Vakuu stopped controlling {RoleSlot(slotLabel)}");
+    }
+
+    public static string VakuuControlsAllPlayers()
+    {
+        return Select("瓦库将接管所有角色的操作", "Vakuu will control all characters");
+    }
+
+    public static string VakuuReleasedAllPlayers()
+    {
+        return Select("瓦库已停止接管所有角色的操作", "Vakuu stopped controlling all characters");
+    }
 }

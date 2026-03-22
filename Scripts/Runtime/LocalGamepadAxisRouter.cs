@@ -2,7 +2,6 @@ using Godot;
 using MegaCrit.Sts2.Core.ControllerInput;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes;
-using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Runtime;
@@ -168,8 +167,6 @@ internal static class LocalGamepadAxisRouter
         }
 
         _ltComboUsed |= _isLtHeld;
-        string stateText = nextEnabled ? "开启" : "关闭";
-        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"角色{LocalSelfCoopContext.GetSlotLabel(playerId)} 瓦库{stateText}"));
         LocalMultiControlLogger.Info($"[LT组合] Y切换当前瓦库成功: player={playerId}, enabled={nextEnabled}");
         return true;
     }
@@ -189,8 +186,6 @@ internal static class LocalGamepadAxisRouter
         }
 
         _ltComboUsed = true;
-        string stateText = targetEnabled ? "全体开启" : "全体关闭";
-        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create($"瓦库{stateText}"));
         LocalMultiControlLogger.Info($"[LT组合] LT+Y切换全体瓦库成功: enabled={targetEnabled}");
         return true;
     }

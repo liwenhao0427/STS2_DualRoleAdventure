@@ -185,6 +185,7 @@ internal static class LocalMultiControlRuntime
         }
 
         RefreshAutoEndTrackingForCombat(combatState);
+        TryAutoSwitchFromWakuuWhenAllWakuuNoPlayableCards(combatState, "wakuu-no-playable-cards-tick");
 
         bool anyWakuuPlayerHasPlayableCards = false;
         foreach (Player player in combatState.Players)
@@ -515,6 +516,44 @@ internal static class LocalMultiControlRuntime
         }
 
         return TrySwitchToNextOperableNonWakuuPlayer(currentPlayerId, source);
+    }
+
+    private static bool TryAutoSwitchFromWakuuWhenAllWakuuNoPlayableCards(CombatState combatState, string source)
+    {
+        ulong currentPlayerId = Session.CurrentControlledPlayerId ?? LocalContext.NetId ?? 0UL;
+        if (currentPlayerId == 0 || !LocalSelfCoopContext.IsWakuuEnabled(currentPlayerId))
+        {
+            return false;
+        }
+
+        bool hasAliveWakuu = false;
+        foreach (Player player in combatState.Players)
+        {
+            if (player?.Creature == null || !player.Creature.IsAlive || !LocalSelfCoopContext.IsWakuuEnabled(player.NetId))
+            {
+                continue;
+            }
+
+            hasAliveWakuu = true;
+            bool hasPlayableCards = PileType.Hand.GetPile(player).Cards.Any((card) => card.CanPlay());
+            if (hasPlayableCards)
+            {
+                return false;
+            }
+        }
+
+        if (!hasAliveWakuu)
+        {
+            return false;
+        }
+
+        bool switched = TrySwitchToNextOperableNonWakuuPlayer(currentPlayerId, source);
+        if (switched)
+        {
+            LocalMultiControlLogger.Info($"检测到所有瓦库角色无牌可出，已自动切换到非瓦库角色: from={currentPlayerId}");
+        }
+
+        return switched;
     }
 
     private static bool CanSwitchDuringCombat(string source)
