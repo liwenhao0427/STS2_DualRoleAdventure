@@ -43,6 +43,8 @@ internal static class LocalMultiControlRuntime
     private static int _lastAutoEndCombatIdentity = -1;
     private static string? _pendingWakuuAutoSwitchRoundKey;
     private static string? _pendingWakuuAutoSwitchSource;
+    private static ulong? _pendingManualEndTurnPlayerId;
+    private static int _pendingManualEndTurnRound = -1;
 
     public static LocalMultiSessionState SessionState => Session;
 
@@ -77,6 +79,8 @@ internal static class LocalMultiControlRuntime
         _lastAutoEndCombatIdentity = -1;
         _pendingWakuuAutoSwitchRoundKey = null;
         _pendingWakuuAutoSwitchSource = null;
+        _pendingManualEndTurnPlayerId = null;
+        _pendingManualEndTurnRound = -1;
         LocalMerchantInventoryRuntime.Clear();
         LocalSelfCoopContext.Disable("RunManager.CleanUp");
         LocalMultiControlLogger.Info("RunManager.CleanUp 后已完成本地多控会话清理。");
@@ -325,7 +329,18 @@ internal static class LocalMultiControlRuntime
         _wakuuToNonWakuuSwitchedRounds.Clear();
         _pendingWakuuAutoSwitchRoundKey = null;
         _pendingWakuuAutoSwitchSource = null;
+        _pendingManualEndTurnPlayerId = null;
+        _pendingManualEndTurnRound = -1;
         LocalMultiControlLogger.Info($"检测到战斗场次切换，重置瓦库自动结束回合状态: combat={combatIdentity}");
+    }
+
+    public static void RecordManualEndTurnIntent(ulong playerId, string source)
+    {
+        NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+        CombatState? combatState = combatUi != null ? TryGetCombatState(combatUi) : null;
+        _pendingManualEndTurnPlayerId = playerId;
+        _pendingManualEndTurnRound = combatState?.RoundNumber ?? -1;
+        LocalMultiControlLogger.Info($"已记录手动结束回合意图: player={playerId}, round={_pendingManualEndTurnRound}, source={source}");
     }
 
     private static async Task GrantWakuuRelicsAsync(RunState runState)
@@ -493,8 +508,11 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
-        if (Session.CurrentControlledPlayerId != endedPlayerId)
+        bool matchedManualEndTurn = TryConsumeManualEndTurnIntent(endedPlayerId);
+        if (!matchedManualEndTurn && Session.CurrentControlledPlayerId != endedPlayerId)
         {
+            LocalMultiControlLogger.Info(
+                $"跳过结束回合后自动切人：ended={endedPlayerId}, controlled={Session.CurrentControlledPlayerId?.ToString() ?? "null"}, manualMatched={matchedManualEndTurn}");
             return;
         }
 
@@ -901,6 +919,36 @@ internal static class LocalMultiControlRuntime
     private static string BuildWakuuSwitchRoundKey(int roundNumber)
     {
         return $"{_lastAutoEndCombatIdentity}:{roundNumber}";
+    }
+
+    private static bool TryConsumeManualEndTurnIntent(ulong endedPlayerId)
+    {
+        if (!_pendingManualEndTurnPlayerId.HasValue)
+        {
+            return false;
+        }
+
+        NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+        CombatState? combatState = combatUi != null ? TryGetCombatState(combatUi) : null;
+        int round = combatState?.RoundNumber ?? -1;
+        bool roundMatches = _pendingManualEndTurnRound < 0 || _pendingManualEndTurnRound == round;
+        bool matched = roundMatches && _pendingManualEndTurnPlayerId.Value == endedPlayerId;
+
+        if (!matched && round != _pendingManualEndTurnRound)
+        {
+            _pendingManualEndTurnPlayerId = null;
+            _pendingManualEndTurnRound = -1;
+            return false;
+        }
+
+        if (!matched)
+        {
+            return false;
+        }
+
+        _pendingManualEndTurnPlayerId = null;
+        _pendingManualEndTurnRound = -1;
+        return true;
     }
 
     private static void TryConsumePendingWakuuAutoSwitch(CombatState combatState)
