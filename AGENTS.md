@@ -198,8 +198,11 @@
 
 - 默认支持“快速发版”：当用户明确要求直接发 Release 时，允许基于当前项目根已有产物直接发布，不强制重新编译。
 - 快速发版使用文件：`DualRoleAdventure.dll` 与 `DualRoleAdventure.json`（均位于项目根）。
-- **发版必须递增版本号**：每次发布都要更新 `DualRoleAdventure.json` 的 `version`（如 `v1.10 -> v1.11`），并保证 Git tag、发布目录名、zip 文件名使用同一版本号。
-- **发版必须包含对应 zip 包**：在 `release/` 下生成 `DualRoleAdventure-<version>/` 目录（含 `dll + json`）并同时产出 `DualRoleAdventure-<version>.zip`，不得仅发布散文件。
+- **发版必须直接调用固定脚本**：`Scripts/Tools/BuildRelease.ps1`。
+  - 默认自动递增 `DualRoleAdventure.json.version` 并打包：`powershell -ExecutionPolicy Bypass -File .\Scripts\Tools\BuildRelease.ps1`
+  - 指定版本号打包：`powershell -ExecutionPolicy Bypass -File .\Scripts\Tools\BuildRelease.ps1 -Version v1.12`
+- **发版必须包含对应 zip 包**：脚本会在 `release/` 下生成 `DualRoleAdventure-<version>/` 目录（含 `dll + json`）并同时产出 `DualRoleAdventure-<version>.zip`，不得仅发布散文件。
+- **说明文本禁止使用 `\n`**：`DualRoleAdventure.json` 的 `description`、`detail` 不允许包含换行，必须为单行文本；脚本会在发现换行时直接报错终止。
 - 发布时必须同时发布与 DLL 同名的 JSON 配置文件（例如：`DualRoleAdventure.json`），格式参考其他 mod 配置：
   ```json
   {
