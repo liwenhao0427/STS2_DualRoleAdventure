@@ -47,13 +47,16 @@ internal static class LocalWakuuRelicLocalization
             string entry = ModelDb.GetId<LocalWakuuStarterRelic>().Entry;
             Dictionary<string, string> customEntries = new()
             {
-                [$"{entry}.title"] = LocalModText.Select("瓦库接管印记", "Vakuu Control Sigil"),
+                [$"{entry}.title"] = LocalModText.Select("永久低语耳环", "Permanent Whispering Earring"),
                 [$"{entry}.description"] = LocalModText.Select(
-                    "本地多控专用遗物。拥有者会在战斗中由瓦库自动接管操作。",
-                    "Local multi-control relic. Its owner is auto-controlled by Vakuu in combat."),
+                    "永久让瓦库接管你的回合。",
+                    "Vakuu permanently takes over your turns."),
+                [$"{entry}.eventDescription"] = LocalModText.Select(
+                    "永久让瓦库接管你的回合。",
+                    "Vakuu permanently takes over your turns."),
                 [$"{entry}.flavor"] = LocalModText.Select(
-                    "它不会低语，只会稳稳地接住你的回合。",
-                    "It does not whisper. It simply holds your turn steady.")
+                    "它不再只接管第一回合，而是接管每一回合。",
+                    "No longer just the first turn. Vakuu takes every turn.")
             };
 
             locManager.GetTable("relics").MergeWith(customEntries);
