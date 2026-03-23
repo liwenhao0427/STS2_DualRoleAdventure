@@ -59,8 +59,9 @@ internal static class RelicCmdObtainPatch
             return obtainedRelic;
         }
 
-        // 仅保留“战后奖励阶段”的遗物同步，避免事件（如涅奥）奖励被同步。
-        if (player.RunState.CurrentRoom is not CombatRoom || CombatManager.Instance.IsInProgress)
+        bool isCombatRewardContext = player.RunState.CurrentRoom is CombatRoom && !CombatManager.Instance.IsInProgress;
+        bool isCrystalSphereContext = CrystalSphereMirrorRuntime.IsInCrystalSphereEventContext(player);
+        if (!isCombatRewardContext && !isCrystalSphereContext)
         {
             return obtainedRelic;
         }
@@ -130,8 +131,9 @@ internal static class RelicCmdRemovePatch
             return;
         }
 
-        // 仅在战后奖励阶段产生的共享遗物链路中保留同步移除。
-        if (removedRelic.Owner.RunState.CurrentRoom is not CombatRoom || CombatManager.Instance.IsInProgress)
+        bool isCombatRewardContext = removedRelic.Owner.RunState.CurrentRoom is CombatRoom && !CombatManager.Instance.IsInProgress;
+        bool isCrystalSphereContext = CrystalSphereMirrorRuntime.IsInCrystalSphereEventContext(removedRelic.Owner);
+        if (!isCombatRewardContext && !isCrystalSphereContext)
         {
             return;
         }

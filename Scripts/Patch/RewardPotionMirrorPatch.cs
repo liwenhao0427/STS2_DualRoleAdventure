@@ -35,8 +35,9 @@ internal static class RewardPotionMirrorPatch
             return;
         }
 
-        // 仅在战后战利品阶段镜像药水，避免污染事件/商店等流程。
-        if (sourcePlayer.RunState.CurrentRoom is not CombatRoom || CombatManager.Instance.IsInProgress)
+        bool isCombatRewardContext = sourcePlayer.RunState.CurrentRoom is CombatRoom && !CombatManager.Instance.IsInProgress;
+        bool isCrystalSphereContext = CrystalSphereMirrorRuntime.IsInCrystalSphereEventContext(sourcePlayer);
+        if (!isCombatRewardContext && !isCrystalSphereContext)
         {
             return;
         }

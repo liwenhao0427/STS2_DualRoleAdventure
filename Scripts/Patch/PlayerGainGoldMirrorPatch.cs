@@ -66,8 +66,9 @@ internal static class PlayerGainGoldMirrorPatch
             return;
         }
 
-        // 仅保留“战后奖励阶段”的金币同步，避免事件（如涅奥）奖励被同步。
-        if (player.RunState.CurrentRoom is not CombatRoom || CombatManager.Instance.IsInProgress)
+        bool isCombatRewardContext = player.RunState.CurrentRoom is CombatRoom && !CombatManager.Instance.IsInProgress;
+        bool isCrystalSphereContext = CrystalSphereMirrorRuntime.IsInCrystalSphereEventContext(player);
+        if (!isCombatRewardContext && !isCrystalSphereContext)
         {
             return;
         }
