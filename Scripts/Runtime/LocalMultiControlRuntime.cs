@@ -450,6 +450,7 @@ internal static class LocalMultiControlRuntime
         RefreshRestSiteForControlledPlayer(currentControlledPlayerId.Value);
         RefreshEventRoomForControlledPlayer(currentControlledPlayerId.Value);
         LocalMerchantInventoryRuntime.RefreshShopRoomForPlayer(currentControlledPlayerId.Value);
+        LocalDeferredTurnStartRuntime.TryRunPendingEntropyForControlledPlayer(currentControlledPlayerId.Value, source);
         EnsureTreasureCursorVisibleAfterSwitch(source);
         LocalWakuuRelicRuntime.ProbeAndRecoverSelectorStack($"apply-control-after-{source}", allowRecover: true);
         LocalMultiControlLogger.Info($"控制上下文已更新: {previousNetId?.ToString() ?? "null"} -> {currentControlledPlayerId.Value}, source={source}");

@@ -87,7 +87,10 @@ internal static class EventSynchronizerPatch
 
         if (!synchronizer.IsShared)
         {
-            ulong currentPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId ?? 0;
+            ulong currentPlayerId =
+                AccessTools.Field(typeof(EventSynchronizer), "_localPlayerId")?.GetValue(synchronizer) as ulong?
+                ?? LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId
+                ?? 0UL;
             if (currentPlayerId != 0)
             {
                 LocalSelfCoopContext.RequestEventAutoSwitchAfterChoice(currentPlayerId);
