@@ -34,6 +34,7 @@ internal static class LocalWakuuRelicRuntime
     private static readonly FieldInfo? SelectorStackField =
         typeof(CardSelectCmd).GetField("_selectorStack", BindingFlags.NonPublic | BindingFlags.Static);
     private static int _selectorScopeInFlight;
+    private static readonly AsyncLocal<ulong?> ForcedAutoChoicePlayerId = new();
 
     public readonly struct SelectorStackSnapshot
     {
@@ -59,6 +60,13 @@ internal static class LocalWakuuRelicRuntime
     public static bool HasWakuuRelic(Player player)
     {
         return TryGetWakuuRelic(player) != null;
+    }
+
+    public static bool ShouldForceAutoChoice(Player player)
+    {
+        return ForcedAutoChoicePlayerId.Value == player.NetId
+            && HasWakuuRelic(player)
+            && !LocalManualPlayGuard.IsActive;
     }
 
     public static async Task ExecuteBeforePlayPhaseStartAsync(
@@ -172,6 +180,12 @@ internal static class LocalWakuuRelicRuntime
     public static bool TryScheduleWatchdog(Player player, string source, out string reason)
     {
         reason = "unknown";
+        if (Volatile.Read(ref _selectorScopeInFlight) > 0)
+        {
+            reason = "selector-scope-busy";
+            return false;
+        }
+
         if (LocalManualPlayGuard.IsActive)
         {
             reason = "manual-play-active";
@@ -243,6 +257,16 @@ internal static class LocalWakuuRelicRuntime
                 return;
             }
 
+            if (combatState.CurrentSide != CombatSide.Player)
+            {
+                return;
+            }
+
+            if (RunManager.Instance.ActionQueueSynchronizer.CombatState != ActionSynchronizerCombatState.PlayPhase)
+            {
+                return;
+            }
+
             if (player.Creature.CombatState != combatState || !HasWakuuRelic(player))
             {
                 return;
@@ -262,10 +286,19 @@ internal static class LocalWakuuRelicRuntime
                 player.NetId,
                 combatState,
                 GameActionType.CombatPlayPhaseOnly);
+            ulong? previousForcedPlayerId = ForcedAutoChoicePlayerId.Value;
+            ForcedAutoChoicePlayerId.Value = player.NetId;
             Task action = ExecuteBeforePlayPhaseStartAsync(relic, choiceContext, player);
-            await choiceContext.AssignTaskAndWaitForPauseOrCompletion(action);
-            await action;
-            LocalMultiControlLogger.Info($"瓦库看门狗已重启自动出牌: player={player.NetId}, source={source}");
+            try
+            {
+                await choiceContext.AssignTaskAndWaitForPauseOrCompletion(action);
+                await action;
+                LocalMultiControlLogger.Info($"瓦库看门狗已重启自动出牌: player={player.NetId}, source={source}");
+            }
+            finally
+            {
+                ForcedAutoChoicePlayerId.Value = previousForcedPlayerId;
+            }
         }
         catch (Exception exception)
         {
