@@ -7,12 +7,15 @@ using MegaCrit.Sts2.Core.CardSelection;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Powers;
+using MegaCrit.Sts2.Core.Nodes.Combat;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace LocalMultiControl.Scripts.Runtime;
@@ -61,6 +64,8 @@ internal static class LocalDeferredTurnStartRuntime
 
     private static readonly Dictionary<PendingEntropyKey, PendingEntropyChoice> PendingEntropyChoices = new();
     private static readonly HashSet<PendingEntropyKey> InFlightEntropyKeys = new();
+    private const int EntropySwitchMaxRetry = 5;
+    private const int EntropySwitchRetryDelayMs = 50;
 
     public static void QueueEntropyChoice(EntropyPower power, Player player)
     {
@@ -78,6 +83,19 @@ internal static class LocalDeferredTurnStartRuntime
         };
         LocalMultiControlLogger.Info(
             $"已挂起熵的手选触发，等待切回角色执行: player={player.NetId}, round={combatState.RoundNumber}, amount={power.Amount}");
+    }
+
+    public static void QueueEntropyChoiceAndSwitchToOwner(EntropyPower power, Player player, string source)
+    {
+        CombatState? combatState = player.Creature.CombatState;
+        if (combatState == null)
+        {
+            return;
+        }
+
+        QueueEntropyChoice(power, player);
+        LocalMultiControlRuntime.SwitchControlledPlayerTo(player.NetId, $"entropy-owner-{source}");
+        TryRunPendingEntropyForControlledPlayer(player.NetId, $"entropy-owner-{source}");
     }
 
     public static void TryRunPendingEntropyForControlledPlayer(ulong playerId, string source)
@@ -139,12 +157,19 @@ internal static class LocalDeferredTurnStartRuntime
                 return;
             }
 
-            LocalMultiControlRuntime.AlignContextForActionOwner(player.NetId, "entropy-deferred-choice");
+            bool ownerContextReady = await EnsureEntropyOwnerContextReadyAsync(player, source, combatState.RoundNumber);
+            if (!ownerContextReady)
+            {
+                LocalMultiControlLogger.Warn(
+                    $"熵手选上下文校验失败，取消本次执行: player={player.NetId}, round={combatState.RoundNumber}, source={source}");
+                return;
+            }
+
             HookPlayerChoiceContext choiceContext = new HookPlayerChoiceContext(
                 power,
                 player.NetId,
                 combatState,
-                GameActionType.CombatPlayPhaseOnly);
+                GameActionType.Combat);
 
             Task action = ExecuteEntropyChoiceAsync(power, choiceContext, player);
             await choiceContext.AssignTaskAndWaitForPauseOrCompletion(action);
@@ -171,5 +196,70 @@ internal static class LocalDeferredTurnStartRuntime
         {
             await CardCmd.TransformToRandom(card, player.RunState.Rng.CombatCardSelection);
         }
+    }
+
+    private static async Task<bool> EnsureEntropyOwnerContextReadyAsync(Player player, string source, int round)
+    {
+        for (int attempt = 1; attempt <= EntropySwitchMaxRetry; attempt++)
+        {
+            if (!RunManager.Instance.IsInProgress || !CombatManager.Instance.IsInProgress)
+            {
+                return false;
+            }
+
+            LocalMultiControlRuntime.SwitchControlledPlayerTo(player.NetId, $"entropy-align-{source}-try{attempt}");
+            LocalMultiControlRuntime.AlignContextForActionOwner(player.NetId, $"entropy-align-{source}-try{attempt}");
+
+            if (IsEntropyHandContextReady(player))
+            {
+                return true;
+            }
+
+            LocalMultiControlLogger.Warn(
+                $"熵手选前检测到手牌上下文未对齐，准备重试切换: player={player.NetId}, round={round}, source={source}, attempt={attempt}/{EntropySwitchMaxRetry}");
+            await Task.Delay(EntropySwitchRetryDelayMs);
+        }
+
+        return IsEntropyHandContextReady(player);
+    }
+
+    private static bool IsEntropyHandContextReady(Player player)
+    {
+        if (!RunManager.Instance.IsInProgress || !CombatManager.Instance.IsInProgress)
+        {
+            return false;
+        }
+
+        ulong currentControlledPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId
+            ?? LocalContext.NetId
+            ?? 0UL;
+        if (currentControlledPlayerId != player.NetId || LocalContext.NetId != player.NetId)
+        {
+            return false;
+        }
+
+        NPlayerHand? hand = NCombatRoom.Instance?.Ui?.Hand;
+        if (hand == null || hand.InCardPlay || hand.IsInCardSelection)
+        {
+            return false;
+        }
+
+        List<CardModel> expectedHandCards = PileType.Hand.GetPile(player).Cards.ToList();
+        if (expectedHandCards.Count == 0)
+        {
+            return true;
+        }
+
+        List<CardModel> visibleHandCards = hand.ActiveHolders
+            .Select((holder) => holder.CardModel)
+            .Where((card) => card != null)
+            .Cast<CardModel>()
+            .ToList();
+        if (visibleHandCards.Count == 0)
+        {
+            return false;
+        }
+
+        return visibleHandCards.All((card) => card.Owner.NetId == player.NetId);
     }
 }

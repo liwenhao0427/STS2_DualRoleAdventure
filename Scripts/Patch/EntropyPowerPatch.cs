@@ -31,7 +31,7 @@ internal static class EntropyPowerPatch
             return true;
         }
 
-        LocalDeferredTurnStartRuntime.QueueEntropyChoice(__instance, player);
+        LocalDeferredTurnStartRuntime.QueueEntropyChoiceAndSwitchToOwner(__instance, player, "after-player-turn-start");
         __result = Task.CompletedTask;
         return false;
     }
