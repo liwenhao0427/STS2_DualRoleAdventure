@@ -128,7 +128,7 @@ if ($PublishGitHub) {
         $releaseBody = "Automated release $targetVersion"
     }
 
-    gh release view $targetVersion 1>$null 2>$null
+    cmd /c "gh release view $targetVersion >nul 2>nul"
     if ($LASTEXITCODE -eq 0) {
         gh release upload $targetVersion $zipPath --clobber
         Write-Host "GitHub release asset updated for $targetVersion"
