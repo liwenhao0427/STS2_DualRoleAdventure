@@ -66,6 +66,8 @@ internal static class LocalDeferredTurnStartRuntime
     private static readonly HashSet<PendingEntropyKey> InFlightEntropyKeys = new();
     private const int EntropySwitchMaxRetry = 5;
     private const int EntropySwitchRetryDelayMs = 50;
+    private const int EntropyDispatchRetryCount = 12;
+    private const int EntropyDispatchRetryDelayMs = 120;
 
     public static void QueueEntropyChoice(EntropyPower power, Player player)
     {
@@ -82,7 +84,7 @@ internal static class LocalDeferredTurnStartRuntime
             Player = player
         };
         LocalMultiControlLogger.Info(
-            $"已挂起熵的手选触发，等待切回角色执行: player={player.NetId}, round={combatState.RoundNumber}, amount={power.Amount}");
+            $"已挂起熵的手选触发，将自动切到触发角色执行: player={player.NetId}, round={combatState.RoundNumber}, amount={power.Amount}");
     }
 
     public static void QueueEntropyChoiceAndSwitchToOwner(EntropyPower power, Player player, string source)
@@ -96,6 +98,8 @@ internal static class LocalDeferredTurnStartRuntime
         QueueEntropyChoice(power, player);
         LocalMultiControlRuntime.SwitchControlledPlayerTo(player.NetId, $"entropy-owner-{source}");
         TryRunPendingEntropyForControlledPlayer(player.NetId, $"entropy-owner-{source}");
+        PendingEntropyKey key = new(RuntimeHelpers.GetHashCode(combatState), combatState.RoundNumber, player.NetId);
+        TaskHelper.RunSafely(RetryDispatchPendingEntropyAsync(key, source));
     }
 
     public static void TryRunPendingEntropyForControlledPlayer(ulong playerId, string source)
@@ -195,6 +199,42 @@ internal static class LocalDeferredTurnStartRuntime
         foreach (CardModel card in cards)
         {
             await CardCmd.TransformToRandom(card, player.RunState.Rng.CombatCardSelection);
+        }
+    }
+
+    private static async Task RetryDispatchPendingEntropyAsync(PendingEntropyKey key, string source)
+    {
+        for (int attempt = 1; attempt <= EntropyDispatchRetryCount; attempt++)
+        {
+            if (!RunManager.Instance.IsInProgress || !CombatManager.Instance.IsInProgress)
+            {
+                return;
+            }
+
+            if (!PendingEntropyChoices.TryGetValue(key, out PendingEntropyChoice? pendingChoice))
+            {
+                return;
+            }
+
+            LocalMultiControlRuntime.SwitchControlledPlayerTo(
+                key.PlayerId,
+                $"entropy-dispatch-{source}-try{attempt}");
+            TryRunPendingEntropyForControlledPlayer(
+                key.PlayerId,
+                $"entropy-dispatch-{source}-try{attempt}");
+
+            if (!PendingEntropyChoices.ContainsKey(key))
+            {
+                return;
+            }
+
+            await Task.Delay(EntropyDispatchRetryDelayMs);
+        }
+
+        if (PendingEntropyChoices.ContainsKey(key))
+        {
+            LocalMultiControlLogger.Warn(
+                $"熵挂起触发在重试窗口内仍未执行: player={key.PlayerId}, round={key.Round}, source={source}");
         }
     }
 
