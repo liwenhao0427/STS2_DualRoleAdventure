@@ -41,7 +41,10 @@ internal static class LocalMultiControlRuntime
     private static readonly HashSet<int> _allPlayersAutoEndedRounds = new HashSet<int>();
     private static readonly HashSet<string> _wakuuToNonWakuuSwitchedRounds = new HashSet<string>();
     private static readonly Dictionary<string, int> _watchdogScheduleRejectCounts = new Dictionary<string, int>();
+    private static readonly Dictionary<string, int> _flowBlockSignalCounts = new Dictionary<string, int>();
+    private static readonly HashSet<string> _flowBlockSignalDedupeRoundPlayer = new HashSet<string>();
     private static int _lastAutoEndCombatIdentity = -1;
+    private static long _flowBlockSignalWindowStartMs;
     private static long _watchdogScheduleWindowStartMs;
     private static int _watchdogScheduleSuccessCount;
     private static ulong _watchdogScheduleLastPlayerId;
@@ -89,6 +92,9 @@ internal static class LocalMultiControlRuntime
         _pendingManualEndTurnPlayerId = null;
         _pendingManualEndTurnRound = -1;
         _watchdogScheduleRejectCounts.Clear();
+        _flowBlockSignalCounts.Clear();
+        _flowBlockSignalDedupeRoundPlayer.Clear();
+        _flowBlockSignalWindowStartMs = 0L;
         _watchdogScheduleWindowStartMs = 0L;
         _watchdogScheduleSuccessCount = 0;
         _watchdogScheduleLastPlayerId = 0UL;
@@ -1446,6 +1452,53 @@ internal static class LocalMultiControlRuntime
         _watchdogScheduleWindowStartMs = nowMs;
         _watchdogScheduleSuccessCount = 0;
         _watchdogScheduleRejectCounts.Clear();
+    }
+
+    public static void RecordFlowBlockSignal(
+        string signal,
+        string reason,
+        ulong playerId,
+        string source,
+        int round,
+        bool dedupePerRoundPlayer = false)
+    {
+        if (!LocalSelfCoopContext.IsEnabled)
+        {
+            return;
+        }
+
+        if (dedupePerRoundPlayer && round >= 0)
+        {
+            string dedupeKey = $"{signal}:{round}:{playerId}";
+            if (!_flowBlockSignalDedupeRoundPlayer.Add(dedupeKey))
+            {
+                return;
+            }
+        }
+
+        long nowMs = (long)Time.GetTicksMsec();
+        if (_flowBlockSignalWindowStartMs <= 0L)
+        {
+            _flowBlockSignalWindowStartMs = nowMs;
+        }
+
+        string key = $"{signal}:{reason}";
+        _flowBlockSignalCounts[key] = (_flowBlockSignalCounts.TryGetValue(key, out int count) ? count : 0) + 1;
+
+        if (nowMs - _flowBlockSignalWindowStartMs < 2000L)
+        {
+            return;
+        }
+
+        string signalSummary = _flowBlockSignalCounts.Count == 0
+            ? "none"
+            : string.Join(",", _flowBlockSignalCounts.Select((entry) => $"{entry.Key}:{entry.Value}"));
+        LocalWakuuRelicRuntime.SelectorStackSnapshot snapshot = LocalWakuuRelicRuntime.SnapshotSelectorStack();
+        LocalMultiControlLogger.Warn(
+            $"流程阻塞看门狗统计: windowMs={nowMs - _flowBlockSignalWindowStartMs}, signals={signalSummary}, player={playerId}, round={round}, source={source}, selectorStackCount={snapshot.Count}, selectorStackTop={snapshot.TopType}");
+
+        _flowBlockSignalWindowStartMs = nowMs;
+        _flowBlockSignalCounts.Clear();
     }
 
     private static void ReevaluateEndTurnButtonState(NCombatUi combatUi, CombatState combatState, Player currentPlayer)

@@ -18,6 +18,8 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Relics;
+using MegaCrit.Sts2.Core.Nodes.Combat;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using Godot;
 
@@ -109,6 +111,20 @@ internal static class LocalWakuuRelicRuntime
                     $"瓦库选择器作用域进入: player={player.NetId}, round={combatState.RoundNumber}, selectorStackCount={pushSnapshot.Count}, selectorStackTop={pushSnapshot.TopType}");
                 for (cardsPlayed = 0; cardsPlayed < MaxCardsToPlay; cardsPlayed++)
                 {
+                    if (TryGetAutoplayUnsafeReason(combatState, out string unsafeReason))
+                    {
+                        LocalMultiControlRuntime.RecordFlowBlockSignal(
+                            "autoplay_skipped_due_to_phase",
+                            unsafeReason,
+                            player.NetId,
+                            "wakuu-autoplay-loop",
+                            combatState.RoundNumber,
+                            dedupePerRoundPlayer: true);
+                        LocalMultiControlLogger.Warn(
+                            $"瓦库自动出牌已熔断跳过本次执行: player={player.NetId}, round={combatState.RoundNumber}, reason={unsafeReason}, played={cardsPlayed}");
+                        break;
+                    }
+
                     if (CombatManager.Instance.IsOverOrEnding)
                     {
                         break;
@@ -410,5 +426,55 @@ internal static class LocalWakuuRelicRuntime
 
         LocalMultiControlLogger.Info($"瓦库自动操作前切换视角: {currentControlledPlayerId} -> {player.NetId}, source={source}");
         LocalMultiControlRuntime.SwitchControlledPlayerTo(player.NetId, $"wakuu-{source}");
+    }
+
+    private static bool TryGetAutoplayUnsafeReason(CombatState combatState, out string reason)
+    {
+        reason = string.Empty;
+        if (!RunManager.Instance.IsInProgress || !CombatManager.Instance.IsInProgress || CombatManager.Instance.IsOverOrEnding)
+        {
+            reason = "combat-not-in-progress";
+            return true;
+        }
+
+        if (RunManager.Instance.ActionQueueSynchronizer.CombatState != ActionSynchronizerCombatState.PlayPhase)
+        {
+            reason = $"sync-{RunManager.Instance.ActionQueueSynchronizer.CombatState}";
+            return true;
+        }
+
+        if (combatState.CurrentSide != CombatSide.Player)
+        {
+            reason = $"side-{combatState.CurrentSide}";
+            return true;
+        }
+
+        NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
+        if (combatUi == null)
+        {
+            reason = "combat-ui-null";
+            return true;
+        }
+
+        NPlayerHand hand = combatUi.Hand;
+        if (hand.InCardPlay)
+        {
+            reason = "hand-in-card-play";
+            return true;
+        }
+
+        if (hand.IsInCardSelection)
+        {
+            reason = "hand-in-card-selection";
+            return true;
+        }
+
+        if (NTargetManager.Instance?.IsInSelection ?? false)
+        {
+            reason = "target-selecting";
+            return true;
+        }
+
+        return false;
     }
 }
