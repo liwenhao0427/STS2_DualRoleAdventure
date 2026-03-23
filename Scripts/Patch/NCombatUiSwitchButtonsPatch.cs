@@ -240,6 +240,5 @@ internal sealed partial class LocalCombatSwitchTracker : Node
 
         LocalCombatSwitchButtons.Refresh(_combatUi);
         LocalMultiControlRuntime.TryAutoEndTurnForRelicControlledPlayer();
-        ActionQueueStallWatchdogRuntime.Tick();
     }
 }

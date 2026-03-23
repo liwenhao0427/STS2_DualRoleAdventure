@@ -24,14 +24,12 @@ internal static class EntropyPowerPatch
             return true;
         }
 
-        ulong currentControlledPlayerId = LocalMultiControlRuntime.SessionState.CurrentControlledPlayerId
-            ?? player.NetId;
-        if (currentControlledPlayerId == player.NetId)
+        if (!LocalWakuuRelicRuntime.HasWakuuRelic(player))
         {
             return true;
         }
 
-        LocalDeferredTurnStartRuntime.QueueEntropyChoiceAndSwitchToOwner(__instance, player, "after-player-turn-start");
+        LocalMultiControlLogger.Info($"熵已跳过瓦库角色: player={player.NetId}, amount={__instance.Amount}");
         __result = Task.CompletedTask;
         return false;
     }
