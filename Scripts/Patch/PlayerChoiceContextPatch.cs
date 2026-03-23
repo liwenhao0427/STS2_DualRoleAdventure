@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
@@ -41,19 +42,33 @@ internal static class PlayerChoiceSynchronizerPatch
     }
 
     [HarmonyPostfix]
-    private static void Postfix(SenderState __state)
+    private static void Postfix(ref SenderState __state)
     {
-        if (!__state.IsPatched)
+        RestoreSenderState(ref __state, "postfix");
+    }
+
+    [HarmonyFinalizer]
+    private static Exception? Finalizer(Exception? __exception, ref SenderState __state)
+    {
+        RestoreSenderState(ref __state, "finalizer");
+        return __exception;
+    }
+
+    private static void RestoreSenderState(ref SenderState state, string source)
+    {
+        if (!state.IsPatched)
         {
             return;
         }
 
-        if (RunManager.Instance.NetService is LocalLoopbackHostGameService loopback && loopback.NetId != __state.PreviousSenderId)
+        if (RunManager.Instance.NetService is LocalLoopbackHostGameService loopback && loopback.NetId != state.PreviousSenderId)
         {
-            loopback.SetCurrentSenderId(__state.PreviousSenderId);
+            loopback.SetCurrentSenderId(state.PreviousSenderId);
         }
 
-        LocalContext.NetId = __state.PreviousContextNetId;
+        LocalContext.NetId = state.PreviousContextNetId;
+        state.IsPatched = false;
+        LocalMultiControlLogger.Info($"PlayerChoice sender/context 已恢复: source={source}");
     }
 }
 

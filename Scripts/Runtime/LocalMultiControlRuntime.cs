@@ -40,7 +40,13 @@ internal static class LocalMultiControlRuntime
     private static readonly HashSet<string> _wakuuAutoEndIssued = new HashSet<string>();
     private static readonly HashSet<int> _allPlayersAutoEndedRounds = new HashSet<int>();
     private static readonly HashSet<string> _wakuuToNonWakuuSwitchedRounds = new HashSet<string>();
+    private static readonly Dictionary<string, int> _watchdogScheduleRejectCounts = new Dictionary<string, int>();
     private static int _lastAutoEndCombatIdentity = -1;
+    private static long _watchdogScheduleWindowStartMs;
+    private static int _watchdogScheduleSuccessCount;
+    private static ulong _watchdogScheduleLastPlayerId;
+    private static int _watchdogScheduleLastRound = -1;
+    private static string _watchdogScheduleLastSource = "none";
     private static string? _pendingWakuuAutoSwitchRoundKey;
     private static string? _pendingWakuuAutoSwitchSource;
     private static ulong? _pendingManualEndTurnPlayerId;
@@ -82,7 +88,14 @@ internal static class LocalMultiControlRuntime
         _pendingWakuuAutoSwitchSource = null;
         _pendingManualEndTurnPlayerId = null;
         _pendingManualEndTurnRound = -1;
+        _watchdogScheduleRejectCounts.Clear();
+        _watchdogScheduleWindowStartMs = 0L;
+        _watchdogScheduleSuccessCount = 0;
+        _watchdogScheduleLastPlayerId = 0UL;
+        _watchdogScheduleLastRound = -1;
+        _watchdogScheduleLastSource = "run-cleanup";
         LocalMerchantInventoryRuntime.Clear();
+        LocalWakuuRelicRuntime.ProbeAndRecoverSelectorStack("run-cleanup", allowRecover: true);
         LocalSelfCoopContext.Disable("RunManager.CleanUp");
         LocalMultiControlLogger.Info("RunManager.CleanUp 后已完成本地多控会话清理。");
     }
@@ -217,7 +230,8 @@ internal static class LocalMultiControlRuntime
             if (LocalWakuuRelicRuntime.HasWakuuRelic(player) && hasPlayableCards)
             {
                 anyWakuuPlayerHasPlayableCards = true;
-                LocalWakuuRelicRuntime.TryScheduleWatchdog(player, "combat-watchdog");
+                bool scheduled = LocalWakuuRelicRuntime.TryScheduleWatchdog(player, "combat-watchdog", out string reason);
+                RecordWatchdogScheduleResult(scheduled, reason, player.NetId, combatState.RoundNumber, "combat-watchdog");
             }
         }
 
@@ -333,6 +347,7 @@ internal static class LocalMultiControlRuntime
         _pendingManualEndTurnPlayerId = null;
         _pendingManualEndTurnRound = -1;
         LocalMultiControlLogger.Info($"检测到战斗场次切换，重置瓦库自动结束回合状态: combat={combatIdentity}");
+        LocalWakuuRelicRuntime.ProbeAndRecoverSelectorStack($"combat-switch-{combatIdentity}", allowRecover: true);
     }
 
     public static void RecordManualEndTurnIntent(ulong playerId, string source)
@@ -387,6 +402,8 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
+        LocalWakuuRelicRuntime.ProbeAndRecoverSelectorStack($"apply-control-before-{source}", allowRecover: true);
+
         if (CombatManager.Instance.IsInProgress)
         {
             NCombatUi? combatUi = NCombatRoom.Instance?.Ui;
@@ -434,6 +451,7 @@ internal static class LocalMultiControlRuntime
         RefreshEventRoomForControlledPlayer(currentControlledPlayerId.Value);
         LocalMerchantInventoryRuntime.RefreshShopRoomForPlayer(currentControlledPlayerId.Value);
         EnsureTreasureCursorVisibleAfterSwitch(source);
+        LocalWakuuRelicRuntime.ProbeAndRecoverSelectorStack($"apply-control-after-{source}", allowRecover: true);
         LocalMultiControlLogger.Info($"控制上下文已更新: {previousNetId?.ToString() ?? "null"} -> {currentControlledPlayerId.Value}, source={source}");
         if (source != "run-launched" && !source.StartsWith("wakuu-", StringComparison.Ordinal))
         {
@@ -1329,6 +1347,8 @@ internal static class LocalMultiControlRuntime
             return;
         }
 
+        LocalWakuuRelicRuntime.ProbeAndRecoverSelectorStack($"event-refresh-before-{playerId}", allowRecover: true);
+
         NEventRoom? eventRoom = NEventRoom.Instance;
         EventSynchronizer synchronizer = RunManager.Instance.EventSynchronizer;
         if (eventRoom == null || synchronizer.IsShared)
@@ -1379,12 +1399,52 @@ internal static class LocalMultiControlRuntime
 
             AccessTools.Method(typeof(NEventRoom), "SetTitle")?.Invoke(eventRoom, new object[] { targetEvent.Title });
             AccessTools.Method(typeof(NEventRoom), "RefreshEventState")?.Invoke(eventRoom, new object[] { targetEvent });
+            LocalWakuuRelicRuntime.ProbeAndRecoverSelectorStack($"event-refresh-after-{playerId}", allowRecover: true);
             LocalMultiControlLogger.Info($"非共享事件视图已切换到玩家 {playerId}");
         }
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"切换非共享事件视图失败: {exception.Message}");
         }
+    }
+
+    private static void RecordWatchdogScheduleResult(bool scheduled, string reason, ulong playerId, int roundNumber, string source)
+    {
+        long nowMs = (long)Time.GetTicksMsec();
+        if (_watchdogScheduleWindowStartMs <= 0L)
+        {
+            _watchdogScheduleWindowStartMs = nowMs;
+        }
+
+        _watchdogScheduleLastPlayerId = playerId;
+        _watchdogScheduleLastRound = roundNumber;
+        _watchdogScheduleLastSource = source;
+
+        if (scheduled)
+        {
+            _watchdogScheduleSuccessCount++;
+        }
+        else
+        {
+            string key = string.IsNullOrEmpty(reason) ? "unknown" : reason;
+            _watchdogScheduleRejectCounts[key] = (_watchdogScheduleRejectCounts.TryGetValue(key, out int count) ? count : 0) + 1;
+        }
+
+        if (nowMs - _watchdogScheduleWindowStartMs < 2000L)
+        {
+            return;
+        }
+
+        string rejectSummary = _watchdogScheduleRejectCounts.Count == 0
+            ? "none"
+            : string.Join(",", _watchdogScheduleRejectCounts.Select((entry) => $"{entry.Key}:{entry.Value}"));
+        LocalWakuuRelicRuntime.SelectorStackSnapshot snapshot = LocalWakuuRelicRuntime.SnapshotSelectorStack();
+        LocalMultiControlLogger.Info(
+            $"瓦库看门狗调度统计: windowMs={nowMs - _watchdogScheduleWindowStartMs}, scheduled={_watchdogScheduleSuccessCount}, rejected={rejectSummary}, lastPlayer={_watchdogScheduleLastPlayerId}, lastRound={_watchdogScheduleLastRound}, lastSource={_watchdogScheduleLastSource}, selectorStackCount={snapshot.Count}, selectorStackTop={snapshot.TopType}");
+
+        _watchdogScheduleWindowStartMs = nowMs;
+        _watchdogScheduleSuccessCount = 0;
+        _watchdogScheduleRejectCounts.Clear();
     }
 
     private static void ReevaluateEndTurnButtonState(NCombatUi combatUi, CombatState combatState, Player currentPlayer)

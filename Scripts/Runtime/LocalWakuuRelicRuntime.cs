@@ -1,6 +1,9 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using LocalMultiControl.Scripts.Models.Relics;
 using MegaCrit.Sts2.Core.Combat;
@@ -27,6 +30,26 @@ internal static class LocalWakuuRelicRuntime
 
     private static readonly Dictionary<string, long> _watchdogLastRunAt = new();
     private static readonly HashSet<string> _watchdogInFlight = new();
+    private static readonly SemaphoreSlim SelectorScopeGate = new(1, 1);
+    private static readonly FieldInfo? SelectorStackField =
+        typeof(CardSelectCmd).GetField("_selectorStack", BindingFlags.NonPublic | BindingFlags.Static);
+    private static int _selectorScopeInFlight;
+
+    public readonly struct SelectorStackSnapshot
+    {
+        public SelectorStackSnapshot(int count, string topType, bool allVakuuSelectors)
+        {
+            Count = count;
+            TopType = topType;
+            AllVakuuSelectors = allVakuuSelectors;
+        }
+
+        public int Count { get; }
+
+        public string TopType { get; }
+
+        public bool AllVakuuSelectors { get; }
+    }
 
     public static LocalWakuuStarterRelic? TryGetWakuuRelic(Player player)
     {
@@ -65,29 +88,69 @@ internal static class LocalWakuuRelicRuntime
 
         bool reachedPlayLimit;
         int cardsPlayed;
-        using (CardSelectCmd.PushSelector(new VakuuCardSelector()))
+        bool gateEntered = false;
+        ulong enterTick = Time.GetTicksMsec();
+        ulong gateWaitStartTick = Time.GetTicksMsec();
+        LocalMultiControlLogger.Info(
+            $"瓦库选择器闸门等待: player={player.NetId}, round={combatState.RoundNumber}, source={choiceContext.GetType().Name}, inFlight={Volatile.Read(ref _selectorScopeInFlight)}");
+        await SelectorScopeGate.WaitAsync();
+        gateEntered = true;
+        int inFlight = Interlocked.Increment(ref _selectorScopeInFlight);
+        ulong gateWaitMs = Time.GetTicksMsec() - gateWaitStartTick;
+        SelectorStackSnapshot gateEnterSnapshot = SnapshotSelectorStack();
+        LocalMultiControlLogger.Info(
+            $"瓦库选择器闸门已进入: player={player.NetId}, round={combatState.RoundNumber}, waitMs={gateWaitMs}, inFlight={inFlight}, selectorStackCount={gateEnterSnapshot.Count}, selectorStackTop={gateEnterSnapshot.TopType}");
+        try
         {
-            for (cardsPlayed = 0; cardsPlayed < MaxCardsToPlay; cardsPlayed++)
+            using (CardSelectCmd.PushSelector(new VakuuCardSelector()))
             {
-                if (CombatManager.Instance.IsOverOrEnding)
+                SelectorStackSnapshot pushSnapshot = SnapshotSelectorStack();
+                LocalMultiControlLogger.Info(
+                    $"瓦库选择器作用域进入: player={player.NetId}, round={combatState.RoundNumber}, selectorStackCount={pushSnapshot.Count}, selectorStackTop={pushSnapshot.TopType}");
+                for (cardsPlayed = 0; cardsPlayed < MaxCardsToPlay; cardsPlayed++)
                 {
-                    break;
+                    if (CombatManager.Instance.IsOverOrEnding)
+                    {
+                        break;
+                    }
+
+                    CardModel? card = cardsPlayed == 0
+                        ? firstPlayableCard
+                        : PileType.Hand.GetPile(relic.Owner).Cards.FirstOrDefault((candidate) => candidate.CanPlay());
+                    if (card == null)
+                    {
+                        break;
+                    }
+
+                    Creature? target = ResolveTarget(card, combatState, relic.Owner);
+                    await card.SpendResources();
+                    await CardCmd.AutoPlay(choiceContext, card, target, AutoPlayType.Default, skipXCapture: true);
                 }
 
-                CardModel? card = cardsPlayed == 0
-                    ? firstPlayableCard
-                    : PileType.Hand.GetPile(relic.Owner).Cards.FirstOrDefault((candidate) => candidate.CanPlay());
-                if (card == null)
-                {
-                    break;
-                }
-
-                Creature? target = ResolveTarget(card, combatState, relic.Owner);
-                await card.SpendResources();
-                await CardCmd.AutoPlay(choiceContext, card, target, AutoPlayType.Default, skipXCapture: true);
+                reachedPlayLimit = cardsPlayed >= MaxCardsToPlay;
+                SelectorStackSnapshot popSnapshot = SnapshotSelectorStack();
+                LocalMultiControlLogger.Info(
+                    $"瓦库选择器作用域退出: player={player.NetId}, round={combatState.RoundNumber}, cardsPlayed={cardsPlayed}, reachedLimit={reachedPlayLimit}, selectorStackCount={popSnapshot.Count}, selectorStackTop={popSnapshot.TopType}");
             }
-
-            reachedPlayLimit = cardsPlayed >= MaxCardsToPlay;
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn(
+                $"瓦库选择器作用域异常退出: player={player.NetId}, round={combatState.RoundNumber}, error={exception.Message}");
+            throw;
+        }
+        finally
+        {
+            if (gateEntered)
+            {
+                int remainInFlight = Interlocked.Decrement(ref _selectorScopeInFlight);
+                SelectorScopeGate.Release();
+                ulong elapsedMs = Time.GetTicksMsec() - enterTick;
+                SelectorStackSnapshot releaseSnapshot = SnapshotSelectorStack();
+                LocalMultiControlLogger.Info(
+                    $"瓦库选择器闸门已释放: player={player.NetId}, round={combatState.RoundNumber}, elapsedMs={elapsedMs}, inFlight={remainInFlight}, selectorStackCount={releaseSnapshot.Count}, selectorStackTop={releaseSnapshot.TopType}");
+                ProbeAndRecoverSelectorStack($"wakuu-selector-finally-{player.NetId}-{combatState.RoundNumber}", allowRecover: true);
+            }
         }
 
         if (cardsPlayed <= 0)
@@ -103,26 +166,36 @@ internal static class LocalWakuuRelicRuntime
 
     public static bool TryScheduleWatchdog(Player player, string source)
     {
+        return TryScheduleWatchdog(player, source, out _);
+    }
+
+    public static bool TryScheduleWatchdog(Player player, string source, out string reason)
+    {
+        reason = "unknown";
         if (LocalManualPlayGuard.IsActive)
         {
+            reason = "manual-play-active";
             return false;
         }
 
         CombatState? combatState = player.Creature.CombatState;
         if (combatState == null || combatState.CurrentSide != CombatSide.Player || CombatManager.Instance.IsOverOrEnding)
         {
+            reason = "invalid-combat-state";
             return false;
         }
 
         LocalWakuuStarterRelic? relic = TryGetWakuuRelic(player);
         if (relic == null)
         {
+            reason = "no-wakuu-relic";
             return false;
         }
 
         bool hasPlayableCards = PileType.Hand.GetPile(player).Cards.Any((card) => card.CanPlay());
         if (!hasPlayableCards)
         {
+            reason = "no-playable-cards";
             return false;
         }
 
@@ -130,18 +203,21 @@ internal static class LocalWakuuRelicRuntime
         long nowMs = (long)Time.GetTicksMsec();
         if (_watchdogInFlight.Contains(key))
         {
+            reason = "watchdog-in-flight";
             return false;
         }
 
         if (_watchdogLastRunAt.TryGetValue(key, out long lastRunMs)
             && nowMs - lastRunMs < WatchdogRestartCooldownMs)
         {
+            reason = "watchdog-cooldown";
             return false;
         }
 
         _watchdogLastRunAt[key] = nowMs;
         _watchdogInFlight.Add(key);
         TaskHelper.RunSafely(RunWatchdogAsync(key, relic, player, combatState, source));
+        reason = "scheduled";
         return true;
     }
 
@@ -208,7 +284,90 @@ internal static class LocalWakuuRelicRuntime
             {
                 LocalMultiControlRuntime.RequestAutoSwitchToNonWakuuOncePerRound($"wakuu-watchdog-{source}");
             }).CallDeferred();
+            ProbeAndRecoverSelectorStack($"wakuu-watchdog-finally-{player.NetId}-{combatState.RoundNumber}-{source}", allowRecover: true);
         }
+    }
+
+    public static void ProbeAndRecoverSelectorStack(string source, bool allowRecover)
+    {
+        SelectorStackSnapshot snapshot = SnapshotSelectorStack();
+        LocalMultiControlLogger.Info(
+            $"瓦库选择器栈探针: source={source}, selectorStackCount={snapshot.Count}, selectorStackTop={snapshot.TopType}, allVakuu={snapshot.AllVakuuSelectors}, inFlight={Volatile.Read(ref _selectorScopeInFlight)}");
+
+        if (!allowRecover || snapshot.Count <= 0)
+        {
+            return;
+        }
+
+        if (Volatile.Read(ref _selectorScopeInFlight) > 0)
+        {
+            return;
+        }
+
+        if (!snapshot.AllVakuuSelectors)
+        {
+            return;
+        }
+
+        if (TryClearSelectorStack(out int clearedCount))
+        {
+            LocalMultiControlLogger.Warn(
+                $"检测到瓦库选择器栈残留，已执行自恢复清理: source={source}, clearedCount={clearedCount}, selectorStackTop={snapshot.TopType}");
+        }
+    }
+
+    public static SelectorStackSnapshot SnapshotSelectorStack()
+    {
+        object? rawStack = SelectorStackField?.GetValue(null);
+        if (rawStack == null)
+        {
+            return new SelectorStackSnapshot(0, "null", allVakuuSelectors: false);
+        }
+
+        Type stackType = rawStack.GetType();
+        int count = (int?)stackType.GetProperty("Count")?.GetValue(rawStack) ?? 0;
+        object? top = count > 0 ? stackType.GetMethod("Peek")?.Invoke(rawStack, null) : null;
+        string topType = top?.GetType().Name ?? "none";
+
+        bool allVakuuSelectors = count > 0;
+        if (rawStack is IEnumerable enumerable)
+        {
+            foreach (object? selector in enumerable)
+            {
+                if (selector is not VakuuCardSelector)
+                {
+                    allVakuuSelectors = false;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            allVakuuSelectors = false;
+        }
+
+        return new SelectorStackSnapshot(count, topType, allVakuuSelectors);
+    }
+
+    private static bool TryClearSelectorStack(out int clearedCount)
+    {
+        clearedCount = 0;
+        object? rawStack = SelectorStackField?.GetValue(null);
+        if (rawStack == null)
+        {
+            return false;
+        }
+
+        Type stackType = rawStack.GetType();
+        int count = (int?)stackType.GetProperty("Count")?.GetValue(rawStack) ?? 0;
+        if (count <= 0)
+        {
+            return false;
+        }
+
+        stackType.GetMethod("Clear")?.Invoke(rawStack, null);
+        clearedCount = count;
+        return true;
     }
 
     private static Creature? ResolveTarget(CardModel card, CombatState combatState, Player owner)
