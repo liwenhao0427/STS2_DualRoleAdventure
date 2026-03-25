@@ -66,6 +66,12 @@ internal static class RelicCmdObtainPatch
             return obtainedRelic;
         }
 
+        if (PaelsWingPatch.TryConsumePendingOwner(player.NetId))
+        {
+            LocalMultiControlLogger.Info($"佩尔之翼献祭产出的遗物不做共享镜像: relic={obtainedRelic.Id.Entry}, owner={player.NetId}");
+            return obtainedRelic;
+        }
+
         bool skipChainMirror = ShouldSkipChainMirror(obtainedRelic);
         if (skipChainMirror)
         {
