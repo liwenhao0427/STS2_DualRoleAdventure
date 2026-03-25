@@ -9,10 +9,12 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Screens.CustomRun;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Unlocks;
@@ -60,6 +62,7 @@ internal static class NMultiplayerHostSubmenuCustomRunPatch
 internal static class NCustomRunScreenLocalPlayersPatch
 {
     private const int MaxLocalAscensionLevel = 10;
+    private static bool _isReconciling;
 
     [HarmonyPostfix]
     private static void Postfix(NCustomRunScreen __instance)
@@ -67,8 +70,13 @@ internal static class NCustomRunScreenLocalPlayersPatch
         TryReconcileLocalPlayers(__instance);
     }
 
-    private static void TryReconcileLocalPlayers(NCustomRunScreen screen)
+    internal static void TryReconcileLocalPlayers(NCustomRunScreen screen)
     {
+        if (_isReconciling)
+        {
+            return;
+        }
+
         if (!LocalSelfCoopContext.IsEnabled)
         {
             return;
@@ -89,60 +97,76 @@ internal static class NCustomRunScreenLocalPlayersPatch
             return;
         }
 
-        UnlockState unlockState = SaveManager.Instance.GenerateUnlockStateFromProgress();
-        SerializableUnlockState serializableUnlockState = unlockState.ToSerializable();
-
-        int added = 0;
-        foreach (ulong playerId in targetPlayerIds)
+        bool needsReconcile = targetPlayerIds.Any((id) => lobby.Players.All((player) => player.id != id))
+                              || lobby.Players.Any((player) =>
+                                  LocalSelfCoopContext.LocalPlayerIds.Contains(player.id) && !targetPlayerIds.Contains(player.id));
+        if (!needsReconcile)
         {
-            bool exists = lobby.Players.Any((player) => player.id == playerId);
-            if (exists)
-            {
-                continue;
-            }
-
-            loopbackService.SetCurrentSenderId(playerId);
-            _ = lobby.AddLocalHostPlayerInternal(serializableUnlockState, MaxLocalAscensionLevel);
-            added++;
+            return;
         }
 
-        List<ulong> removablePlayerIds = LocalSelfCoopContext.LocalPlayerIds
-            .Skip(targetPlayerIds.Count)
-            .ToList();
-        int removed = 0;
-        foreach (ulong removableId in removablePlayerIds)
+        _isReconciling = true;
+        try
         {
-            int playerIndex = lobby.Players.FindIndex((player) => player.id == removableId);
-            if (playerIndex < 0)
+            UnlockState unlockState = SaveManager.Instance.GenerateUnlockStateFromProgress();
+            SerializableUnlockState serializableUnlockState = unlockState.ToSerializable();
+
+            int added = 0;
+            foreach (ulong playerId in targetPlayerIds)
             {
-                continue;
+                bool exists = lobby.Players.Any((player) => player.id == playerId);
+                if (exists)
+                {
+                    continue;
+                }
+
+                loopbackService.SetCurrentSenderId(playerId);
+                _ = lobby.AddLocalHostPlayerInternal(serializableUnlockState, MaxLocalAscensionLevel);
+                added++;
             }
 
-            LobbyPlayer removedPlayer = lobby.Players[playerIndex];
-            lobby.Players.RemoveAt(playerIndex);
-            lobby.InputSynchronizer.OnPlayerDisconnected(removedPlayer.id);
-            screen.RemotePlayerDisconnected(removedPlayer);
-            removed++;
-        }
-
-        bool readyChanged = false;
-        for (int i = 0; i < lobby.Players.Count; i++)
-        {
-            LobbyPlayer player = lobby.Players[i];
-            if (player.id == LocalSelfCoopContext.PrimaryPlayerId || player.isReady)
+            List<ulong> removablePlayerIds = LocalSelfCoopContext.LocalPlayerIds
+                .Skip(targetPlayerIds.Count)
+                .ToList();
+            int removed = 0;
+            foreach (ulong removableId in removablePlayerIds)
             {
-                continue;
+                int playerIndex = lobby.Players.FindIndex((player) => player.id == removableId);
+                if (playerIndex < 0)
+                {
+                    continue;
+                }
+
+                LobbyPlayer removedPlayer = lobby.Players[playerIndex];
+                lobby.Players.RemoveAt(playerIndex);
+                lobby.InputSynchronizer.OnPlayerDisconnected(removedPlayer.id);
+                screen.RemotePlayerDisconnected(removedPlayer);
+                removed++;
             }
 
-            player.isReady = true;
-            lobby.Players[i] = player;
-            screen.PlayerChanged(player);
-            readyChanged = true;
-        }
+            bool readyChanged = false;
+            for (int i = 0; i < lobby.Players.Count; i++)
+            {
+                LobbyPlayer player = lobby.Players[i];
+                if (player.id == LocalSelfCoopContext.PrimaryPlayerId || player.isReady)
+                {
+                    continue;
+                }
 
-        LocalSelfCoopContext.EnsureLobbySenderContext("custom-run-opened");
-        LocalMultiControlLogger.Info(
-            $"自定义模式大厅本地人数已同步: target={targetPlayerIds.Count}, actual={lobby.Players.Count}, added={added}, removed={removed}, readyChanged={readyChanged}");
+                player.isReady = true;
+                lobby.Players[i] = player;
+                screen.PlayerChanged(player);
+                readyChanged = true;
+            }
+
+            LocalSelfCoopContext.EnsureLobbySenderContext("custom-run-opened");
+            LocalMultiControlLogger.Info(
+                $"自定义模式大厅本地人数已同步: target={targetPlayerIds.Count}, actual={lobby.Players.Count}, added={added}, removed={removed}, readyChanged={readyChanged}");
+        }
+        finally
+        {
+            _isReconciling = false;
+        }
     }
 
     private static void EnsureLobbyMaxCapacity(StartRunLobby lobby)
@@ -154,5 +178,188 @@ internal static class NCustomRunScreenLocalPlayersPatch
         }
 
         AccessTools.Field(typeof(StartRunLobby), "<MaxPlayers>k__BackingField")?.SetValue(lobby, maxLocalPlayerCount);
+    }
+}
+
+[HarmonyPatch(typeof(NCustomRunScreen), nameof(NCustomRunScreen._Process))]
+internal static class NCustomRunScreenLocalPlayersProcessPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(NCustomRunScreen __instance)
+    {
+        NCustomRunScreenLocalPlayersPatch.TryReconcileLocalPlayers(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(NCustomRunScreen), "OnEmbarkPressed")]
+internal static class NCustomRunEmbarkGuardPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(NCustomRunScreen __instance)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || __instance.Lobby.NetService is not LocalLoopbackHostGameService loopbackService)
+        {
+            return;
+        }
+
+        NCustomRunScreenLocalPlayersPatch.TryReconcileLocalPlayers(__instance);
+        loopbackService.SetCurrentSenderId(LocalSelfCoopContext.PrimaryPlayerId);
+        LocalContext.NetId = LocalSelfCoopContext.PrimaryPlayerId;
+        LocalMultiControlLogger.Info($"自定义模式开始前强制校正 sender 到主角色: {LocalSelfCoopContext.PrimaryPlayerId}");
+    }
+}
+
+[HarmonyPatch(typeof(NCustomRunScreen), nameof(NCustomRunScreen.OnSubmenuOpened))]
+internal static class NCustomRunLocalCountButtonsOpenPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(NCustomRunScreen __instance)
+    {
+        LocalCustomRunCountButtons.Sync(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(NCustomRunScreen), nameof(NCustomRunScreen._Process))]
+internal static class NCustomRunLocalCountButtonsProcessPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(NCustomRunScreen __instance)
+    {
+        LocalCustomRunCountButtons.Sync(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(NCustomRunScreen), nameof(NCustomRunScreen.OnSubmenuClosed))]
+internal static class NCustomRunLocalCountButtonsClosePatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(NCustomRunScreen __instance)
+    {
+        LocalCustomRunCountButtons.Remove(__instance);
+    }
+}
+
+internal static class LocalCustomRunCountButtons
+{
+    private const string PanelName = "LocalCustomRunCountPanel";
+    private const string MinusButtonName = "LocalCustomRunMinusButton";
+    private const string PlusButtonName = "LocalCustomRunPlusButton";
+    private const string PrevButtonName = "LocalCustomRunPrevButton";
+    private const string NextButtonName = "LocalCustomRunNextButton";
+    private static readonly Vector2 ButtonSize = new(140f, 32f);
+    private const float VerticalGapRatio = 0.5f;
+    private const float HorizontalGap = 44f;
+
+    public static void Sync(NCustomRunScreen screen)
+    {
+        if (!LocalSelfCoopContext.IsEnabled)
+        {
+            Remove(screen);
+            return;
+        }
+
+        Control panel = EnsurePanel(screen);
+        UpdateLayout(screen, panel);
+    }
+
+    public static void Remove(NCustomRunScreen screen)
+    {
+        Control? existingPanel = screen.GetNodeOrNull<Control>(PanelName);
+        existingPanel?.QueueFreeSafely();
+    }
+
+    private static Control EnsurePanel(NCustomRunScreen screen)
+    {
+        Control? existingPanel = screen.GetNodeOrNull<Control>(PanelName);
+        if (existingPanel != null)
+        {
+            return existingPanel;
+        }
+
+        Control panel = new()
+        {
+            Name = PanelName,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            ZIndex = 80
+        };
+
+        LocalSimpleTextButton minusButton = CreateButton(MinusButtonName, "-", false);
+        minusButton.Connect(NClickableControl.SignalName.Released,
+            Callable.From<NClickableControl>((_) => OnAdjustPlayerCount(-1)));
+        panel.AddChild(minusButton);
+
+        LocalSimpleTextButton plusButton = CreateButton(PlusButtonName, "+", true);
+        plusButton.Connect(NClickableControl.SignalName.Released,
+            Callable.From<NClickableControl>((_) => OnAdjustPlayerCount(1)));
+        panel.AddChild(plusButton);
+
+        LocalSimpleTextButton prevButton = CreateButton(PrevButtonName, string.Empty, false);
+        prevButton.Connect(NClickableControl.SignalName.Released,
+            Callable.From<NClickableControl>((_) => LocalSelfCoopContext.SwitchLobbyEditingPlayer(false)));
+        panel.AddChild(prevButton);
+
+        LocalSimpleTextButton nextButton = CreateButton(NextButtonName, string.Empty, true);
+        nextButton.Connect(NClickableControl.SignalName.Released,
+            Callable.From<NClickableControl>((_) => LocalSelfCoopContext.SwitchLobbyEditingPlayer(true)));
+        panel.AddChild(nextButton);
+
+        screen.AddChildSafely(panel);
+        return panel;
+    }
+
+    private static LocalSimpleTextButton CreateButton(string name, string text, bool mirrorX)
+    {
+        return new LocalSimpleTextButton
+        {
+            Name = name,
+            ButtonText = text,
+            FocusMode = Control.FocusModeEnum.None,
+            FontSize = 20,
+            Size = ButtonSize,
+            CustomMinimumSize = ButtonSize,
+            ImageScale = Vector2.One * 1.5f,
+            MirrorImageX = mirrorX
+        };
+    }
+
+    private static void UpdateLayout(NCustomRunScreen screen, Control panel)
+    {
+        Viewport? viewport = screen.GetViewport();
+        if (viewport == null)
+        {
+            return;
+        }
+
+        float verticalGap = ButtonSize.Y * VerticalGapRatio;
+        float secondColumnX = ButtonSize.X + HorizontalGap;
+        float secondRowY = ButtonSize.Y + verticalGap;
+        float panelWidth = secondColumnX + ButtonSize.X;
+        float panelHeight = secondRowY + ButtonSize.Y;
+        Vector2 viewportSize = viewport.GetVisibleRect().Size;
+
+        panel.Position = new Vector2(viewportSize.X - panelWidth - 18f, viewportSize.Y - panelHeight - 18f);
+
+        panel.GetNodeOrNull<LocalSimpleTextButton>(MinusButtonName)!.Position = Vector2.Zero;
+        panel.GetNodeOrNull<LocalSimpleTextButton>(PlusButtonName)!.Position = new Vector2(secondColumnX, 0f);
+        panel.GetNodeOrNull<LocalSimpleTextButton>(PrevButtonName)!.Position = new Vector2(0f, secondRowY);
+        panel.GetNodeOrNull<LocalSimpleTextButton>(NextButtonName)!.Position = new Vector2(secondColumnX, secondRowY);
+    }
+
+    private static void OnAdjustPlayerCount(int delta)
+    {
+        if (!LocalSelfCoopContext.IsEnabled)
+        {
+            return;
+        }
+
+        string source = delta > 0 ? "custom-ui-button:+" : "custom-ui-button:-";
+        if (!LocalSelfCoopContext.AdjustDesiredLocalPlayerCount(delta, source))
+        {
+            return;
+        }
+
+        int targetCount = LocalSelfCoopContext.DesiredLocalPlayerCount;
+        NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create(LocalModText.LocalPlayerCount(targetCount)));
+        LocalMultiControlLogger.Info($"通过自定义模式实体按钮调整本地人数成功: {targetCount}");
     }
 }
