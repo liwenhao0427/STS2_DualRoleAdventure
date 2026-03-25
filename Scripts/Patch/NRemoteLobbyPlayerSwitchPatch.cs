@@ -8,6 +8,7 @@ using MegaCrit.Sts2.Core.ControllerInput;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Multiplayer;
+using MegaCrit.Sts2.Core.Nodes.Screens.CustomRun;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -68,7 +69,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
             return;
         }
 
-        NCharacterSelectScreen? screen = TryGetCharacterSelectScreen(playerNode);
+        Node? screen = TryGetLobbyScreen(playerNode);
         bool shouldShow = LocalSelfCoopContext.IsEnabled
                           && !RunManager.Instance.IsInProgress
                           && screen != null
@@ -208,7 +209,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         playerNode.AddChildSafely(icon);
     }
 
-    private static void EnsureGlobalWakuuToggle(NCharacterSelectScreen screen)
+    private static void EnsureGlobalWakuuToggle(Node screen)
     {
         if (screen.GetNodeOrNull<CheckButton>(GlobalWakuuToggleName) == null)
         {
@@ -294,7 +295,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         }
     }
 
-    private static void RefreshGlobalWakuuToggle(NCharacterSelectScreen? screen)
+    private static void RefreshGlobalWakuuToggle(Node? screen)
     {
         if (screen == null || !GodotObject.IsInstanceValid(screen))
         {
@@ -365,20 +366,20 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         playerNode.AddChild(tracker);
     }
 
-    private static NCharacterSelectScreen? TryGetCharacterSelectScreen(Node node)
+    private static Node? TryGetLobbyScreen(Node node)
     {
         for (Node? current = node; current != null; current = current.GetParent())
         {
-            if (current is NCharacterSelectScreen screen)
+            if (current is NCharacterSelectScreen || current is NCustomRunScreen)
             {
-                return screen;
+                return current;
             }
         }
 
         return null;
     }
 
-    private static AnchorLayout ResolveAnchorLayout(NCharacterSelectScreen screen, NRemoteLobbyPlayer playerNode)
+    private static AnchorLayout ResolveAnchorLayout(Node screen, NRemoteLobbyPlayer playerNode)
     {
         List<NRemoteLobbyPlayer> localNodes = GetLocalLobbyNodes(screen);
         Rect2 currentAnchorRect = ResolveIdAnchorRect(playerNode);
@@ -474,7 +475,7 @@ internal static class LocalRemoteLobbyPlayerSwitchUi
         return Mathf.Max(MinColumnGap, gaps.Average());
     }
 
-    private static List<NRemoteLobbyPlayer> GetLocalLobbyNodes(NCharacterSelectScreen screen)
+    private static List<NRemoteLobbyPlayer> GetLocalLobbyNodes(Node screen)
     {
         return EnumerateDescendants(screen)
             .OfType<NRemoteLobbyPlayer>()

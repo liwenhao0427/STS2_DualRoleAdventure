@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Screens.CustomRun;
+using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Context;
@@ -361,5 +362,115 @@ internal static class LocalCustomRunCountButtons
         int targetCount = LocalSelfCoopContext.DesiredLocalPlayerCount;
         NGame.Instance?.AddChildSafely(NFullscreenTextVfx.Create(LocalModText.LocalPlayerCount(targetCount)));
         LocalMultiControlLogger.Info($"通过自定义模式实体按钮调整本地人数成功: {targetCount}");
+    }
+}
+
+[HarmonyPatch(typeof(NCustomRunScreen), nameof(NCustomRunScreen.OnSubmenuOpened))]
+internal static class NCustomRunSelectionSyncOpenPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(NCustomRunScreen __instance)
+    {
+        LocalCustomRunSelectionSync.TrySync(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(NCustomRunScreen), nameof(NCustomRunScreen.PlayerChanged))]
+internal static class NCustomRunSelectionSyncPlayerChangedPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(NCustomRunScreen __instance)
+    {
+        LocalCustomRunSelectionSync.TrySync(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(NCustomRunScreen), nameof(NCustomRunScreen._Process))]
+internal static class NCustomRunSelectionSyncProcessPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(NCustomRunScreen __instance)
+    {
+        LocalCustomRunSelectionSync.TrySync(__instance);
+    }
+}
+
+internal static class LocalCustomRunSelectionSync
+{
+    private static bool _isSyncing;
+
+    public static void TrySync(NCustomRunScreen screen)
+    {
+        if (!LocalSelfCoopContext.IsEnabled || _isSyncing)
+        {
+            return;
+        }
+
+        StartRunLobby lobby = screen.Lobby;
+        if (lobby.NetService is not LocalLoopbackHostGameService)
+        {
+            return;
+        }
+
+        _isSyncing = true;
+        try
+        {
+            Control? charButtonContainer = AccessTools.Field(typeof(NCustomRunScreen), "_charButtonContainer")
+                ?.GetValue(screen) as Control;
+            if (charButtonContainer == null)
+            {
+                return;
+            }
+
+            ulong editingPlayerId = LocalContext.NetId ?? LocalSelfCoopContext.PrimaryPlayerId;
+            if (lobby.Players.All((player) => player.id != editingPlayerId))
+            {
+                editingPlayerId = LocalSelfCoopContext.PrimaryPlayerId;
+            }
+
+            LobbyPlayer editingPlayer = lobby.Players.FirstOrDefault((player) => player.id == editingPlayerId);
+
+            List<NCharacterSelectButton> buttons = charButtonContainer.GetChildren().OfType<NCharacterSelectButton>().ToList();
+            foreach (NCharacterSelectButton button in buttons)
+            {
+                foreach (LobbyPlayer player in lobby.Players)
+                {
+                    button.OnRemotePlayerDeselected(player.id);
+                }
+            }
+
+            NCharacterSelectButton? selectedButton = null;
+            foreach (NCharacterSelectButton button in buttons)
+            {
+                bool isSelected = button.Character == editingPlayer.character;
+                AccessTools.Field(typeof(NCharacterSelectButton), "_isSelected")?.SetValue(button, isSelected);
+                if (isSelected)
+                {
+                    selectedButton = button;
+                }
+            }
+
+            foreach (LobbyPlayer player in lobby.Players)
+            {
+                if (player.id == editingPlayer.id)
+                {
+                    continue;
+                }
+
+                NCharacterSelectButton? targetButton = buttons.FirstOrDefault((button) => button.Character == player.character);
+                targetButton?.OnRemotePlayerSelected(player.id);
+            }
+
+            foreach (NCharacterSelectButton button in buttons)
+            {
+                AccessTools.Method(typeof(NCharacterSelectButton), "RefreshState")?.Invoke(button, Array.Empty<object>());
+            }
+
+            AccessTools.Field(typeof(NCustomRunScreen), "_selectedButton")?.SetValue(screen, selectedButton);
+        }
+        finally
+        {
+            _isSyncing = false;
+        }
     }
 }
