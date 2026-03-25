@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -91,7 +92,31 @@ internal static class RewardsCmdPatch
             }
         }
 
+        int prayerWheelExtraRewardCount = AppendPrayerWheelExtraCardRewards(combatRoom, rewardsSet, otherPlayers);
         LocalMultiControlLogger.Info(
-            $"战后奖励已扩展额外卡池: owner={currentPlayer.NetId}, extraPlayers={otherPlayers.Count}, extraRewards={extraRewardCount}");
+            $"战后奖励已扩展额外卡池: owner={currentPlayer.NetId}, extraPlayers={otherPlayers.Count}, mirroredRewards={extraRewardCount}, prayerWheelExtraRewards={prayerWheelExtraRewardCount}");
+    }
+
+    private static int AppendPrayerWheelExtraCardRewards(CombatRoom combatRoom, RewardsSet rewardsSet, IReadOnlyList<Player> otherPlayers)
+    {
+        if (combatRoom.RoomType != RoomType.Monster)
+        {
+            return 0;
+        }
+
+        int extraRewardCount = 0;
+        foreach (Player otherPlayer in otherPlayers)
+        {
+            if (otherPlayer.GetRelic<PrayerWheel>() == null)
+            {
+                continue;
+            }
+
+            CardReward extraCardReward = new(CardCreationOptions.ForRoom(otherPlayer, combatRoom.RoomType), 3, otherPlayer);
+            rewardsSet.Rewards.Add(extraCardReward);
+            extraRewardCount++;
+        }
+
+        return extraRewardCount;
     }
 }
