@@ -127,6 +127,12 @@ powershell -ExecutionPolicy Bypass -File .\Scripts\Tools\SyncFeishuTask.ps1 `
   -Source "AI整理"
 ```
 
+## 支持作者
+
+如果这个 Mod 对你有帮助，欢迎请作者喝杯咖啡 ☕
+
+<img src="捐赠支持作者开发.jpeg" alt="捐赠支持作者开发" width="200" />
+
 ## 修改日志（重要里程碑）
 
 详细记录见 [CHANGELOG.md](./CHANGELOG.md)。
