@@ -486,7 +486,7 @@ internal static class LocalSelfCoopContext
 
             lobbyPlayer.isReady = true;
             lobby.Players[playerIndex] = lobbyPlayer;
-            screen.PlayerChanged(lobbyPlayer);
+            screen.PlayerChanged(lobbyPlayer, false);
         }
 
         EnsureLobbyEditingPlayerIsValid();
@@ -514,7 +514,7 @@ internal static class LocalSelfCoopContext
 
             player.maxMultiplayerAscensionUnlocked = MaxLocalAscensionLevel;
             lobby.Players[i] = player;
-            lobby.LobbyListener.PlayerChanged(player);
+            lobby.LobbyListener.PlayerChanged(player, false);
             changed = true;
         }
 

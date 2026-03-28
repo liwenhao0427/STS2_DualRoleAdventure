@@ -1564,13 +1564,15 @@ internal static class LocalMultiControlRuntime
             return false;
         }
 
-        List<int?>? votes = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_votes")?.GetValue(synchronizer) as List<int?>;
+        List<TreasureRoomRelicSynchronizer.PlayerVote>? votes =
+            AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_votes")?.GetValue(synchronizer)
+                as List<TreasureRoomRelicSynchronizer.PlayerVote>;
         if (votes == null || votes.Count == 0)
         {
             return false;
         }
 
-        return votes.Any((vote) => !vote.HasValue);
+        return votes.Any(vote => !vote.voteReceived);
     }
 
 }
