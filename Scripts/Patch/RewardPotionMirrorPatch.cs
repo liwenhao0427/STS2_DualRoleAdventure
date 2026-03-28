@@ -2,6 +2,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using HarmonyLib;
+using LocalMultiControl.Scripts.Rewards;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
@@ -25,6 +26,12 @@ internal static class RewardPotionMirrorPatch
     private static void Postfix(RewardSynchronizer __instance, PotionModel potion)
     {
         if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode || IsMirroring.Value)
+        {
+            return;
+        }
+
+        // 汇总奖励流程中，每个角色已独立生成药水奖励，不需要镜像
+        if (CombatRewardMergeContext.IsActive)
         {
             return;
         }

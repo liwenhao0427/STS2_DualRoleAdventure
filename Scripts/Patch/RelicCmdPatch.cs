@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using HarmonyLib;
+using LocalMultiControl.Scripts.Rewards;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
@@ -56,6 +57,13 @@ internal static class RelicCmdObtainPatch
 
         if (player.RunState?.Players == null || player.RunState.Players.Count <= 1)
         {
+            return obtainedRelic;
+        }
+
+        // 汇总奖励流程中，每个角色已独立生成奖励，不需要镜像
+        if (CombatRewardMergeContext.IsActive)
+        {
+            LocalMultiControlLogger.Info($"汇总奖励流程中跳过遗物镜像: relic={obtainedRelic.Id.Entry}, owner={player.NetId}");
             return obtainedRelic;
         }
 
@@ -133,6 +141,12 @@ internal static class RelicCmdRemovePatch
         }
 
         if (!LocalSelfCoopContext.IsEnabled || removedRelic.Owner?.RunState == null)
+        {
+            return;
+        }
+
+        // 汇总奖励流程中跳过镜像
+        if (CombatRewardMergeContext.IsActive)
         {
             return;
         }

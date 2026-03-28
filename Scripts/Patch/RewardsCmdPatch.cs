@@ -2,18 +2,24 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using HarmonyLib;
+using LocalMultiControl.Scripts.Rewards;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Commands;
-using MegaCrit.Sts2.Core.Context;
-using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Models.Relics;
+using MegaCrit.Sts2.Core.Hooks;
+using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.TestSupport;
 
 namespace LocalMultiControl.Scripts.Patch;
 
+/// <summary>
+/// 战后奖励重构：为每个角色独立生成奖励（利用原版 RewardsSet 逻辑），
+/// 然后将所有角色的奖励汇总到一个列表展示，每个奖励标识对应角色。
+/// 这样遗物翻倍、上等好货因子、猎人狩猎等效果能正确按角色独立生效。
+/// </summary>
 [HarmonyPatch(typeof(RewardsCmd), nameof(RewardsCmd.OfferForRoomEnd))]
 internal static class RewardsCmdPatch
 {
@@ -25,98 +31,80 @@ internal static class RewardsCmdPatch
             return true;
         }
 
-        __result = OfferSharedRewardsForControlledPlayer(combatRoom);
+        __result = OfferMergedRewardsForAllPlayers(combatRoom);
         return false;
     }
 
-    private static async Task OfferSharedRewardsForControlledPlayer(CombatRoom combatRoom)
+    private static async Task OfferMergedRewardsForAllPlayers(CombatRoom combatRoom)
     {
         IRunState runState = combatRoom.CombatState.RunState;
-        Player? rewardPlayer = LocalContext.GetMe(runState);
-        if (rewardPlayer == null)
+        List<Player> allPlayers = runState.Players.ToList();
+        if (allPlayers.Count == 0)
         {
             return;
         }
 
-        RewardsSet rewardsSet = combatRoom.Encounter != null && !combatRoom.Encounter.ShouldGiveRewards
-            ? new RewardsSet(rewardPlayer).EmptyForRoom(combatRoom)
-            : new RewardsSet(rewardPlayer).WithRewardsFromRoom(combatRoom);
-
-        AppendCardRewardsForOtherPlayers(combatRoom, rewardsSet, rewardPlayer);
-        await rewardsSet.Offer();
+        // 标记进入汇总奖励流程，抑制遗物/药水/金币的镜像复制
+        CombatRewardMergeContext.Enter();
+        try
+        {
+            await OfferMergedRewardsCore(combatRoom, allPlayers);
+        }
+        finally
+        {
+            CombatRewardMergeContext.Exit();
+        }
     }
 
-    private static void AppendCardRewardsForOtherPlayers(CombatRoom combatRoom, RewardsSet rewardsSet, Player currentPlayer)
+    private static async Task OfferMergedRewardsCore(CombatRoom combatRoom, List<Player> allPlayers)
     {
-        List<Player> otherPlayers = currentPlayer.RunState.Players
-            .Where((player) => player.NetId != currentPlayer.NetId)
-            .ToList();
-        if (otherPlayers.Count == 0)
+        // 为每个角色独立生成奖励（不展示），收集到汇总列表
+        List<Reward> mergedRewards = new();
+        bool shouldGiveRewards = combatRoom.Encounter == null || combatRoom.Encounter.ShouldGiveRewards;
+
+        foreach (Player player in allPlayers)
         {
-            return;
-        }
-
-        List<CardReward> primaryCardRewards = rewardsSet.Rewards
-            .OfType<CardReward>()
-            .Where((reward) => reward.Player.NetId == currentPlayer.NetId)
-            .ToList();
-        if (primaryCardRewards.Count == 0)
-        {
-            return;
-        }
-
-        int extraRewardCount = 0;
-        foreach (CardReward primaryCardReward in primaryCardRewards)
-        {
-            int optionCount = AccessTools.Property(typeof(CardReward), "OptionCount")?.GetValue(primaryCardReward) as int? ?? 3;
-            int insertOffset = 1;
-            foreach (Player otherPlayer in otherPlayers)
-            {
-                CardReward extraCardReward = new(CardCreationOptions.ForRoom(otherPlayer, combatRoom.RoomType), optionCount, otherPlayer)
-                {
-                    CanReroll = primaryCardReward.CanReroll
-                };
-
-                int insertIndex = rewardsSet.Rewards.IndexOf(primaryCardReward);
-                if (insertIndex >= 0)
-                {
-                    rewardsSet.Rewards.Insert(insertIndex + insertOffset, extraCardReward);
-                }
-                else
-                {
-                    rewardsSet.Rewards.Add(extraCardReward);
-                }
-
-                insertOffset++;
-                extraRewardCount++;
-            }
-        }
-
-        int prayerWheelExtraRewardCount = AppendPrayerWheelExtraCardRewards(combatRoom, rewardsSet, otherPlayers);
-        LocalMultiControlLogger.Info(
-            $"战后奖励已扩展额外卡池: owner={currentPlayer.NetId}, extraPlayers={otherPlayers.Count}, mirroredRewards={extraRewardCount}, prayerWheelExtraRewards={prayerWheelExtraRewardCount}");
-    }
-
-    private static int AppendPrayerWheelExtraCardRewards(CombatRoom combatRoom, RewardsSet rewardsSet, IReadOnlyList<Player> otherPlayers)
-    {
-        if (combatRoom.RoomType != RoomType.Monster)
-        {
-            return 0;
-        }
-
-        int extraRewardCount = 0;
-        foreach (Player otherPlayer in otherPlayers)
-        {
-            if (otherPlayer.GetRelic<PrayerWheel>() == null)
+            if (player.Creature?.IsDead == true)
             {
                 continue;
             }
 
-            CardReward extraCardReward = new(CardCreationOptions.ForRoom(otherPlayer, combatRoom.RoomType), 3, otherPlayer);
-            rewardsSet.Rewards.Add(extraCardReward);
-            extraRewardCount++;
+            RewardsSet perPlayerSet = shouldGiveRewards
+                ? new RewardsSet(player).WithRewardsFromRoom(combatRoom)
+                : new RewardsSet(player).EmptyForRoom(combatRoom);
+
+            // 调用 GenerateWithoutOffering 触发 Populate + Hook.ModifyRewards
+            await perPlayerSet.GenerateWithoutOffering();
+            await Hook.BeforeRewardsOffered(player.RunState, player, perPlayerSet.Rewards);
+
+            // 为每个奖励注册角色标签
+            foreach (Reward reward in perPlayerSet.Rewards)
+            {
+                RewardPlayerLabelRegistry.Register(reward, player.NetId);
+            }
+
+            mergedRewards.AddRange(perPlayerSet.Rewards);
+            LocalMultiControlLogger.Info(
+                $"角色独立奖励已生成: player={player.NetId}, rewardCount={perPlayerSet.Rewards.Count}");
         }
 
-        return extraRewardCount;
+        // 切换到第一个存活角色的控制上下文来展示奖励界面
+        Player? displayPlayer = allPlayers.FirstOrDefault((p) => p.Creature?.IsDead != true) ?? allPlayers[0];
+        LocalMultiControlRuntime.SwitchControlledPlayerTo(displayPlayer.NetId, "merged-rewards-offer");
+
+        if (TestMode.IsOn)
+        {
+            foreach (Reward reward in mergedRewards)
+            {
+                await reward.OnSelectWrapper();
+            }
+
+            return;
+        }
+
+        bool isTerminal = true; // CombatRoom 的奖励界面始终是 terminal
+        NRewardsScreen rewardScreen = NRewardsScreen.ShowScreen(isTerminal, displayPlayer.RunState);
+        rewardScreen.SetRewards(mergedRewards);
+        await rewardScreen.ClosedTask;
     }
 }

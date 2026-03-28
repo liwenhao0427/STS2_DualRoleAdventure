@@ -2,6 +2,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using HarmonyLib;
+using LocalMultiControl.Scripts.Rewards;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
@@ -63,6 +64,12 @@ internal static class PlayerGainGoldMirrorPatch
         if (GoldMirrorSuppressionContext.ShouldSuppressGoldMirror)
         {
             LocalMultiControlLogger.Info($"遗物流程金币跳过镜像: amount={amount}, owner={player.NetId}");
+            return;
+        }
+
+        // 汇总奖励流程中，每个角色已独立生成金币奖励，不需要镜像
+        if (CombatRewardMergeContext.IsActive)
+        {
             return;
         }
 
