@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using MegaCrit.Sts2.Core.Combat;
 using Godot;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes;
@@ -67,6 +69,7 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
         button.CustomMinimumSize = SmallButtonSize;
         Vector2 targetPosition = ResolveSwitchButtonPosition(state, anchorRect);
         button.GlobalPosition = targetPosition;
+        RefreshCombatTrackerState(state);
     }
 
     private static void EnsureSwitchButton(NMultiplayerPlayerState state)
@@ -188,6 +191,37 @@ internal static class LocalMultiplayerPlayerStateSwitchUi
         }
 
         return idAnchorRect.Position + DefaultAnchorOffset;
+    }
+
+    private static void RefreshCombatTrackerState(NMultiplayerPlayerState state)
+    {
+        if (!LocalSelfCoopContext.IsEnabled)
+        {
+            return;
+        }
+
+        Control? energyContainer = AccessTools.Field(typeof(NMultiplayerPlayerState), "_energyContainer")?.GetValue(state) as Control;
+        Control? starContainer = AccessTools.Field(typeof(NMultiplayerPlayerState), "_starContainer")?.GetValue(state) as Control;
+        Control? cardContainer = AccessTools.Field(typeof(NMultiplayerPlayerState), "_cardContainer")?.GetValue(state) as Control;
+        if (energyContainer == null || starContainer == null || cardContainer == null || state.Player.PlayerCombatState == null)
+        {
+            return;
+        }
+
+        bool shouldShowCombatInfo = CombatManager.Instance.IsInProgress;
+        if (!shouldShowCombatInfo)
+        {
+            energyContainer.Visible = false;
+            starContainer.Visible = false;
+            cardContainer.Visible = false;
+            return;
+        }
+
+        energyContainer.Visible = true;
+        cardContainer.Visible = true;
+        starContainer.Visible = state.Player.Character is Regent || state.Player.PlayerCombatState.Stars > 0;
+        AccessTools.Method(typeof(NMultiplayerPlayerState), "RefreshCombatValues")?.Invoke(state, Array.Empty<object>());
+        AccessTools.Method(typeof(NMultiplayerPlayerState), "UpdateSelectionReticleWidth")?.Invoke(state, Array.Empty<object>());
     }
 
     private static void HideOriginalIdLabel(NMultiplayerPlayerState state)

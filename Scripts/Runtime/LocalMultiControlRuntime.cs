@@ -45,6 +45,7 @@ internal static class LocalMultiControlRuntime
     private static readonly Dictionary<string, int> _flowBlockSignalCounts = new Dictionary<string, int>();
     private static readonly HashSet<string> _flowBlockSignalDedupeRoundPlayer = new HashSet<string>();
     private static int _lastAutoEndCombatIdentity = -1;
+    private static Vector2? _combatEnergyContainerDefaultPosition;
     private static long _flowBlockSignalWindowStartMs;
     private static long _watchdogScheduleWindowStartMs;
     private static int _watchdogScheduleSuccessCount;
@@ -1109,6 +1110,11 @@ internal static class LocalMultiControlRuntime
     {
         NStarCounter? starCounter = AccessTools.Field(typeof(NCombatUi), "_starCounter")?.GetValue(combatUi) as NStarCounter;
         NEnergyCounter? oldEnergyCounter = AccessTools.Field(typeof(NCombatUi), "_energyCounter")?.GetValue(combatUi) as NEnergyCounter;
+        PlayerCombatState? playerCombatState = player.PlayerCombatState;
+        if (!_combatEnergyContainerDefaultPosition.HasValue)
+        {
+            _combatEnergyContainerDefaultPosition = combatUi.EnergyCounterContainer.Position;
+        }
 
         if (starCounter != null)
         {
@@ -1127,6 +1133,7 @@ internal static class LocalMultiControlRuntime
             }
 
             starCounter.Initialize(player);
+            AccessTools.Method(typeof(NStarCounter), "RefreshVisibility")?.Invoke(starCounter, Array.Empty<object>());
         }
 
         if (oldEnergyCounter != null)
@@ -1137,8 +1144,17 @@ internal static class LocalMultiControlRuntime
         NEnergyCounter? newEnergyCounter = NEnergyCounter.Create(player);
         if (newEnergyCounter != null)
         {
+            Vector2 targetPosition = player.Character.ShouldAlwaysShowStarCounter
+                ? new Vector2(100f, 806f)
+                : _combatEnergyContainerDefaultPosition ?? combatUi.EnergyCounterContainer.Position;
+            combatUi.EnergyCounterContainer.SetPosition(targetPosition, keepOffsets: true);
             combatUi.EnergyCounterContainer.AddChildSafely(newEnergyCounter);
             starCounter?.Reparent(newEnergyCounter);
+            if (starCounter != null)
+            {
+                starCounter.Visible = player.Character.ShouldAlwaysShowStarCounter || (playerCombatState?.Stars ?? 0) > 0;
+            }
+
             AccessTools.Field(typeof(NCombatUi), "_energyCounter")?.SetValue(combatUi, newEnergyCounter);
         }
     }
