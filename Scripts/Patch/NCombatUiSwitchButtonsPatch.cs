@@ -27,11 +27,6 @@ internal static class NCombatUiActivatePatch
     private static void Postfix(NCombatUi __instance, CombatState state)
     {
         LocalCombatSwitchButtons.Refresh(__instance);
-        LocalMultiControlRuntime.RefreshCombatEnergyForCurrentPlayer("combat-ui-activate");
-        Callable.From(delegate
-        {
-            LocalMultiControlRuntime.RefreshCombatEnergyForCurrentPlayer("combat-ui-activate-deferred");
-        }).CallDeferred();
     }
 }
 
