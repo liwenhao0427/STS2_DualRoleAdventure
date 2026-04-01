@@ -27,6 +27,7 @@ using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Saves;
 using Godot;
 
@@ -1286,7 +1287,7 @@ internal static class LocalMultiControlRuntime
 
         RunState? runState = RunManager.Instance.DebugOnlyGetState();
         Player? player = runState?.GetPlayer(playerId);
-        if (player == null)
+        if (runState == null || player == null)
         {
             return;
         }
@@ -1364,7 +1365,7 @@ internal static class LocalMultiControlRuntime
 
         RunState? runState = RunManager.Instance.DebugOnlyGetState();
         Player? player = runState?.GetPlayer(playerId);
-        if (player == null)
+        if (runState == null || player == null)
         {
             return;
         }
@@ -1378,40 +1379,36 @@ internal static class LocalMultiControlRuntime
 
         try
         {
-            Action<EventModel> refreshHandler = (Action<EventModel>)AccessTools.Method(typeof(NEventRoom), "RefreshEventState")!
-                .CreateDelegate(typeof(Action<EventModel>), eventRoom);
-            Action enteringCombatHandler = (Action)AccessTools.Method(typeof(NEventRoom), "OnEnteringEventCombat")!
-                .CreateDelegate(typeof(Action), eventRoom);
-            Func<EventOption, Task> beforeChosenHandler = (Func<EventOption, Task>)AccessTools.Method(typeof(NEventRoom), "BeforeOptionChosen")!
-                .CreateDelegate(typeof(Func<EventOption, Task>), eventRoom);
+            ResetEventNodeReference(currentEvent);
+            ResetEventNodeReference(targetEvent);
 
-            currentEvent.StateChanged -= refreshHandler;
-            currentEvent.EnteringEventCombat -= enteringCombatHandler;
-
-            List<EventOption>? connectedOptions = AccessTools.Field(typeof(NEventRoom), "_connectedOptions")?.GetValue(eventRoom) as List<EventOption>;
-            if (connectedOptions != null)
+            if (targetEvent.LayoutType == EventLayoutType.Combat && targetEvent.Node == null)
             {
-                foreach (EventOption option in connectedOptions)
-                {
-                    option.BeforeChosen -= beforeChosenHandler;
-                }
-
-                connectedOptions.Clear();
+                targetEvent.GenerateInternalCombatState(runState);
             }
 
-            AccessTools.Field(typeof(NEventRoom), "_event")?.SetValue(eventRoom, targetEvent);
-            targetEvent.StateChanged += refreshHandler;
-            targetEvent.EnteringEventCombat += enteringCombatHandler;
+            bool isPreFinished = runState.CurrentRoom is EventRoom currentEventRoom && currentEventRoom.IsPreFinished;
+            NEventRoom? refreshedRoom = NEventRoom.Create(targetEvent, runState, isPreFinished);
+            if (refreshedRoom == null)
+            {
+                LocalMultiControlLogger.Warn($"重建事件房间失败：Create 返回 null，player={playerId}");
+                return;
+            }
 
-            AccessTools.Method(typeof(NEventRoom), "SetTitle")?.Invoke(eventRoom, new object[] { targetEvent.Title });
-            AccessTools.Method(typeof(NEventRoom), "RefreshEventState")?.Invoke(eventRoom, new object[] { targetEvent });
+            NRun.Instance?.SetCurrentRoom(refreshedRoom);
             LocalWakuuRelicRuntime.ProbeAndRecoverSelectorStack($"event-refresh-after-{playerId}", allowRecover: true);
-            LocalMultiControlLogger.Info($"非共享事件视图已切换到玩家 {playerId}");
+            LocalMultiControlLogger.Info($"非共享事件房间已按当前角色重建: player={playerId}, event={targetEvent.Id.Entry}");
         }
         catch (Exception exception)
         {
             LocalMultiControlLogger.Warn($"切换非共享事件视图失败: {exception.Message}");
         }
+    }
+
+    private static void ResetEventNodeReference(EventModel eventModel)
+    {
+        AccessTools.PropertySetter(typeof(EventModel), nameof(EventModel.Node))
+            ?.Invoke(eventModel, new object?[] { null });
     }
 
     private static void RecordWatchdogScheduleResult(bool scheduled, string reason, ulong playerId, int roundNumber, string source)
