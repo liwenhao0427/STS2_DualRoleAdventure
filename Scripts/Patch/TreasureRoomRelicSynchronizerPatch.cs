@@ -44,7 +44,7 @@ internal static class TreasureRoomRelicSynchronizerPatch
     }
 
     [HarmonyPrefix]
-    private static bool Prefix(TreasureRoomRelicSynchronizer __instance, Player player, int index)
+    private static bool Prefix(TreasureRoomRelicSynchronizer __instance, Player player, int? index)
     {
         if (!LocalSelfCoopContext.IsEnabled || !LocalSelfCoopContext.UseSingleAdventureMode)
         {
@@ -56,9 +56,16 @@ internal static class TreasureRoomRelicSynchronizerPatch
             return true;
         }
 
+        if (!index.HasValue)
+        {
+            return true;
+        }
+
         try
         {
-            List<int?>? votes = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_votes")?.GetValue(__instance) as List<int?>;
+            List<TreasureRoomRelicSynchronizer.PlayerVote>? votes =
+                AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_votes")?.GetValue(__instance)
+                    as List<TreasureRoomRelicSynchronizer.PlayerVote>;
             IPlayerCollection? players = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_playerCollection")?.GetValue(__instance) as IPlayerCollection;
             IReadOnlyList<RelicModel>? currentRelics = __instance.CurrentRelics;
             if (votes == null || players == null || currentRelics == null || currentRelics.Count == 0)
@@ -66,21 +73,23 @@ internal static class TreasureRoomRelicSynchronizerPatch
                 return false;
             }
 
-            if (index < 0 || index >= currentRelics.Count)
+            int selectedIndex = index.Value;
+            if (selectedIndex < 0 || selectedIndex >= currentRelics.Count)
             {
-                LocalMultiControlLogger.Warn($"宝箱投票索引越界，已忽略: index={index}, relicCount={currentRelics.Count}");
+                LocalMultiControlLogger.Warn($"宝箱投票索引越界，已忽略: index={selectedIndex}, relicCount={currentRelics.Count}");
                 return false;
             }
 
             int sharedCount = Math.Min(votes.Count, players.Players.Count);
             for (int i = 0; i < sharedCount; i++)
             {
-                votes[i] = index;
+                votes[i].index = selectedIndex;
+                votes[i].voteReceived = true;
             }
 
             InvokeVotesChanged(__instance);
 
-            RelicModel selectedRelic = currentRelics[index];
+            RelicModel selectedRelic = currentRelics[selectedIndex];
             List<RelicPickingResult> results = BuildOverflowResults(plan, player, selectedRelic);
 
             InvokeRelicsAwarded(__instance, results);
@@ -165,7 +174,9 @@ internal static class TreasureRoomRelicSynchronizerPatch
     {
         try
         {
-            List<int?>? votes = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_votes")?.GetValue(synchronizer) as List<int?>;
+            List<TreasureRoomRelicSynchronizer.PlayerVote>? votes =
+                AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_votes")?.GetValue(synchronizer)
+                    as List<TreasureRoomRelicSynchronizer.PlayerVote>;
             IPlayerCollection? players = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_playerCollection")?.GetValue(synchronizer) as IPlayerCollection;
             if (votes == null || players == null)
             {
@@ -184,7 +195,7 @@ internal static class TreasureRoomRelicSynchronizerPatch
                 return false;
             }
 
-            if (!votes[currentSlot].HasValue)
+            if (!votes[currentSlot].voteReceived)
             {
                 return false;
             }
@@ -193,7 +204,7 @@ internal static class TreasureRoomRelicSynchronizerPatch
             for (int step = 1; step < sharedCount; step++)
             {
                 int slot = (currentSlot + step) % sharedCount;
-                if (!votes[slot].HasValue)
+                if (!votes[slot].voteReceived)
                 {
                     nextSlot = slot;
                     break;
@@ -237,7 +248,9 @@ internal static class TreasureRoomRelicSynchronizerBeginPatch
 
         try
         {
-            List<int?>? votes = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_votes")?.GetValue(__instance) as List<int?>;
+            List<TreasureRoomRelicSynchronizer.PlayerVote>? votes =
+                AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_votes")?.GetValue(__instance)
+                    as List<TreasureRoomRelicSynchronizer.PlayerVote>;
             IReadOnlyList<Player>? players = AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_playerCollection")?.GetValue(__instance) is IPlayerCollection playerCollection
                 ? playerCollection.Players
                 : null;
@@ -252,7 +265,8 @@ internal static class TreasureRoomRelicSynchronizerBeginPatch
             {
                 for (int i = 0; i < sharedCount; i++)
                 {
-                    votes[i] = null;
+                    votes[i].index = null;
+                    votes[i].voteReceived = false;
                 }
 
                 TreasureRoomRelicSynchronizerPatch.RemoveOverflowPlan(__instance);
@@ -268,7 +282,8 @@ internal static class TreasureRoomRelicSynchronizerBeginPatch
 
             for (int i = 0; i < sharedCount; i++)
             {
-                votes[i] = null;
+                votes[i].index = null;
+                votes[i].voteReceived = false;
                 if (i > 0)
                 {
                     plan.Followers.Add(players[i]);
