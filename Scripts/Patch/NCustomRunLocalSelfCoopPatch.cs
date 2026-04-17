@@ -156,7 +156,7 @@ internal static class NCustomRunScreenLocalPlayersPatch
 
                 player.isReady = true;
                 lobby.Players[i] = player;
-                screen.PlayerChanged(player);
+                screen.PlayerChanged(player, false);
                 readyChanged = true;
             }
 

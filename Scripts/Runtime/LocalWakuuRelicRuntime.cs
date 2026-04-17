@@ -20,6 +20,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Runs;
 using Godot;
 
@@ -177,7 +178,7 @@ internal static class LocalWakuuRelicRuntime
         LocString line = reachedPlayLimit
             ? new LocString("relics", "WHISPERING_EARRING.warning")
             : new LocString("relics", "WHISPERING_EARRING.approval");
-        TalkCmd.Play(line, relic.Owner.Creature);
+        TalkCmd.Play(line, relic.Owner.Creature, VfxColor.Purple);
     }
 
     public static bool TryScheduleWatchdog(Player player, string source)
