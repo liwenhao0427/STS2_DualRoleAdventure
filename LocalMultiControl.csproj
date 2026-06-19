@@ -1,4 +1,4 @@
-<Project Sdk="Godot.NET.Sdk/4.5.1">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>true</ImplicitUsings>
@@ -8,24 +8,31 @@
     <AssemblyName>DualRoleAdventure</AssemblyName>
     <RootNamespace>DualRoleAdventure</RootNamespace>
 
-    <!-- 改成你的杀戮尖塔2目录 -->
-    <Sts2Dir>E:\SteamLibrary\steamapps\common\Slay the Spire 2</Sts2Dir>
-    <Sts2DataDir>$(Sts2Dir)\data_sts2_windows_x86_64</Sts2DataDir>
+    <!-- 改成你的杀戮尖塔2目录 / Slay the Spire 2 installation directory -->
+    <Sts2Dir Condition="$([MSBuild]::IsOSPlatform('Windows'))">E:\SteamLibrary\steamapps\common\Slay the Spire 2</Sts2Dir>
+    <Sts2Dir Condition="$([MSBuild]::IsOSPlatform('Linux'))">$(HOME)/.local/share/Steam/steamapps/common/Slay the Spire 2</Sts2Dir>
+    <Sts2DataDir Condition="$([MSBuild]::IsOSPlatform('Windows'))">$(Sts2Dir)\data_sts2_windows_x86_64</Sts2DataDir>
+    <Sts2DataDir Condition="$([MSBuild]::IsOSPlatform('Linux'))">$(Sts2Dir)/data_sts2_linuxbsd_x86_64</Sts2DataDir>
   </PropertyGroup>
 
   <ItemGroup>
+    <Reference Include="GodotSharp">
+      <HintPath>$(Sts2DataDir)/GodotSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
     <Reference Include="sts2">
-      <HintPath>$(Sts2DataDir)\sts2.dll</HintPath>
+      <HintPath>$(Sts2DataDir)/sts2.dll</HintPath>
       <Private>false</Private>
     </Reference>
 
     <Reference Include="0Harmony">
-      <HintPath>$(Sts2DataDir)\0Harmony.dll</HintPath>
+      <HintPath>$(Sts2DataDir)/0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
 
     <Reference Include="Steamworks.NET">
-      <HintPath>$(Sts2DataDir)\Steamworks.NET.dll</HintPath>
+      <HintPath>$(Sts2DataDir)/Steamworks.NET.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

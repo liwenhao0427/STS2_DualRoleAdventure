@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
@@ -326,6 +327,26 @@ internal static class LocalSelfCoopContext
         LocalContext.NetId = CurrentLobbyEditingPlayerId;
         LocalMultiControlLogger.Info($"澶у巺鎺у埗涓婁笅鏂囧悓姝? player={CurrentLobbyEditingPlayerId}, source={source}");
         return true;
+    }
+
+    /* Centralized "active player just changed" trigger. Anything in the combat
+     * UI bound to LocalContext.GetMe() (enemy intent damage, variable-cost
+     * card previews, Frantic Escape / Sandpit, etc.) stays stale until the
+     * game's own state-change pipeline runs. Piggyback on it by invoking
+     * CombatStateTracker.NotifyCombatStateChanged via reflection — that path
+     * also runs RecalculateCardValues for the new "me" before firing
+     * CombatStateChanged, which the existing UI elements all subscribe to. */
+    public static void FireActivePlayerChanged(string source)
+    {
+        try
+        {
+            AccessTools.Method(typeof(CombatStateTracker), "NotifyCombatStateChanged")
+                ?.Invoke(CombatManager.Instance.StateTracker, new object[] { $"active-player-changed:{source}" });
+        }
+        catch (Exception exception)
+        {
+            LocalMultiControlLogger.Warn($"Failed to trigger combat state refresh: {exception.Message}");
+        }
     }
 
     public static void NotifyCharacterSelectPlayerChanged(ulong playerId)

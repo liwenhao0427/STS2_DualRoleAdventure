@@ -1097,6 +1097,9 @@ internal static class LocalMultiControlRuntime
             hand.ForceRefreshCardIndices();
             RefreshCombatEnergyUi(combatUi, player);
             ReevaluateEndTurnButtonState(combatUi, combatState, player);
+
+            LocalSelfCoopContext.FireActivePlayerChanged("ui-refresh");
+
             LocalMultiControlLogger.Info($"战斗UI已刷新到当前角色 {playerId}，手牌数量={handPile.Cards.Count}");
             return true;
         }
