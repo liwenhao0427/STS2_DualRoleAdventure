@@ -291,7 +291,7 @@ internal static class LocalSelfCoopContext
         EnsureLocalPlayerIdCapacity(targetCount);
         TrimWakuuPlayerIdsToConfiguredPlayers();
 
-        bool reconciled = ReconcileLobbyPlayerCount(source);
+        bool reconciled = ReconcileStartRunLobbyPlayerCount(source);
         if (!reconciled)
         {
             LocalMultiControlLogger.Info($"宸叉洿鏂扮洰鏍囨湰鍦扮帺瀹舵暟: {oldCount} -> {targetCount}");
@@ -390,7 +390,7 @@ internal static class LocalSelfCoopContext
     public static bool BootstrapLocalPlayers(NCharacterSelectScreen characterSelectScreen)
     {
         ActiveCharacterSelectScreen = characterSelectScreen;
-        return ReconcileLobbyPlayerCount("bootstrap-local-players");
+        return ReconcileStartRunLobbyPlayerCount("bootstrap-local-players");
     }
 
     public static void EnsureLocalAscensionOptionsUnlocked(NCharacterSelectScreen screen, string source)
@@ -409,7 +409,7 @@ internal static class LocalSelfCoopContext
         EnsureLobbyAscensionCapacity(lobby, source);
     }
 
-    private static bool ReconcileLobbyPlayerCount(string source)
+    private static bool ReconcileStartRunLobbyPlayerCount(string source)
     {
         if (!IsEnabled || NetService == null || ActiveCharacterSelectScreen == null)
         {
@@ -459,7 +459,7 @@ internal static class LocalSelfCoopContext
                 continue;
             }
 
-            LobbyPlayer removedPlayer = lobby.Players[playerIndex];
+            StartRunLobbyPlayer removedPlayer = lobby.Players[playerIndex];
             lobby.Players.RemoveAt(playerIndex);
             lobby.InputSynchronizer.OnPlayerDisconnected(removedPlayer.id);
             screen.RemotePlayerDisconnected(removedPlayer);
@@ -478,7 +478,7 @@ internal static class LocalSelfCoopContext
                 continue;
             }
 
-            LobbyPlayer lobbyPlayer = lobby.Players[playerIndex];
+            StartRunLobbyPlayer lobbyPlayer = lobby.Players[playerIndex];
             if (lobbyPlayer.isReady)
             {
                 continue;
@@ -506,7 +506,7 @@ internal static class LocalSelfCoopContext
 
         for (int i = 0; i < lobby.Players.Count; i++)
         {
-            LobbyPlayer player = lobby.Players[i];
+            StartRunLobbyPlayer player = lobby.Players[i];
             if (player.maxMultiplayerAscensionUnlocked >= MaxLocalAscensionLevel)
             {
                 continue;
@@ -619,7 +619,7 @@ internal static class LocalSelfCoopContext
                 return;
             }
 
-            LobbyPlayer localPlayer = lobby.Players[localPlayerIndex];
+            StartRunLobbyPlayer localPlayer = lobby.Players[localPlayerIndex];
             Control? charButtonContainer = AccessTools.Field(typeof(NCharacterSelectScreen), "_charButtonContainer")
                 ?.GetValue(ActiveCharacterSelectScreen) as Control;
             if (charButtonContainer == null)
@@ -630,7 +630,7 @@ internal static class LocalSelfCoopContext
             List<NCharacterSelectButton> buttons = charButtonContainer.GetChildren().OfType<NCharacterSelectButton>().ToList();
             foreach (NCharacterSelectButton button in buttons)
             {
-                foreach (LobbyPlayer player in lobby.Players)
+                foreach (StartRunLobbyPlayer player in lobby.Players)
                 {
                     button.OnRemotePlayerDeselected(player.id);
                 }
@@ -647,7 +647,7 @@ internal static class LocalSelfCoopContext
                 }
             }
 
-            foreach (LobbyPlayer player in lobby.Players)
+            foreach (StartRunLobbyPlayer player in lobby.Players)
             {
                 if (player.id == localPlayer.id)
                 {
