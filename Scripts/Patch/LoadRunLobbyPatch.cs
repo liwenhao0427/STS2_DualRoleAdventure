@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using LocalMultiControl.Scripts.Runtime;
+using MegaCrit.Sts2.Core.Entities.Multiplayer;
+using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 
 namespace LocalMultiControl.Scripts.Patch;
@@ -27,7 +29,6 @@ internal static class LoadRunLobbyPatch
             return;
         }
 
-        HashSet<ulong>? readyPlayers = AccessTools.Field(typeof(LoadRunLobby), "_readyPlayers")?.GetValue(__instance) as HashSet<ulong>;
         ulong localHostId = __instance.NetService.NetId;
 
         if (ready)
@@ -39,24 +40,34 @@ internal static class LoadRunLobbyPatch
                     continue;
                 }
 
-                if (__instance.ConnectedPlayerIds.Add(playerId))
+                int playerIndex = __instance.Players.FindIndex((player) => player.id == playerId);
+                if (playerIndex < 0)
                 {
-                    __instance.LobbyListener.PlayerConnected(playerId);
+                    LoadRunLobbyPlayer newPlayer = new()
+                    {
+                        id = playerId,
+                        versionInfo = PeerVersionInfo.LocalDefault(),
+                        isReady = true
+                    };
+                    __instance.Players.Add(newPlayer);
+                    __instance.LobbyListener.PlayerConnected(newPlayer);
+                    __instance.LobbyListener.PlayerReadyChanged(playerId);
+                    continue;
                 }
 
-                if (readyPlayers != null && readyPlayers.Add(playerId))
+                LoadRunLobbyPlayer lobbyPlayer = __instance.Players[playerIndex];
+                if (lobbyPlayer.isReady)
                 {
-                    __instance.LobbyListener.PlayerReadyChanged(playerId);
+                    continue;
                 }
+
+                lobbyPlayer.isReady = true;
+                __instance.Players[playerIndex] = lobbyPlayer;
+                __instance.LobbyListener.PlayerReadyChanged(playerId);
             }
 
             InvokeBeginRunIfAllPlayersReady(__instance);
             LocalMultiControlLogger.Info($"本地多控读档自动就绪: players={string.Join(",", localPlayerIdsInRun)}");
-            return;
-        }
-
-        if (readyPlayers == null)
-        {
             return;
         }
 
@@ -67,10 +78,21 @@ internal static class LoadRunLobbyPatch
                 continue;
             }
 
-            if (readyPlayers.Remove(playerId))
+            int playerIndex = __instance.Players.FindIndex((player) => player.id == playerId);
+            if (playerIndex < 0)
             {
-                __instance.LobbyListener.PlayerReadyChanged(playerId);
+                continue;
             }
+
+            LoadRunLobbyPlayer lobbyPlayer = __instance.Players[playerIndex];
+            if (!lobbyPlayer.isReady)
+            {
+                continue;
+            }
+
+            lobbyPlayer.isReady = false;
+            __instance.Players[playerIndex] = lobbyPlayer;
+            __instance.LobbyListener.PlayerReadyChanged(playerId);
         }
     }
 

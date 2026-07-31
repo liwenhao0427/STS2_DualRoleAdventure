@@ -138,7 +138,7 @@ internal static class NCustomRunScreenLocalPlayersPatch
                     continue;
                 }
 
-                LobbyPlayer removedPlayer = lobby.Players[playerIndex];
+                StartRunLobbyPlayer removedPlayer = lobby.Players[playerIndex];
                 lobby.Players.RemoveAt(playerIndex);
                 lobby.InputSynchronizer.OnPlayerDisconnected(removedPlayer.id);
                 screen.RemotePlayerDisconnected(removedPlayer);
@@ -148,7 +148,7 @@ internal static class NCustomRunScreenLocalPlayersPatch
             bool readyChanged = false;
             for (int i = 0; i < lobby.Players.Count; i++)
             {
-                LobbyPlayer player = lobby.Players[i];
+                StartRunLobbyPlayer player = lobby.Players[i];
                 if (player.id == LocalSelfCoopContext.PrimaryPlayerId || player.isReady)
                 {
                     continue;
@@ -428,12 +428,12 @@ internal static class LocalCustomRunSelectionSync
                 editingPlayerId = LocalSelfCoopContext.PrimaryPlayerId;
             }
 
-            LobbyPlayer editingPlayer = lobby.Players.FirstOrDefault((player) => player.id == editingPlayerId);
+            StartRunLobbyPlayer editingPlayer = lobby.Players.FirstOrDefault((player) => player.id == editingPlayerId);
 
             List<NCharacterSelectButton> buttons = charButtonContainer.GetChildren().OfType<NCharacterSelectButton>().ToList();
             foreach (NCharacterSelectButton button in buttons)
             {
-                foreach (LobbyPlayer player in lobby.Players)
+                foreach (StartRunLobbyPlayer player in lobby.Players)
                 {
                     button.OnRemotePlayerDeselected(player.id);
                 }
@@ -450,7 +450,7 @@ internal static class LocalCustomRunSelectionSync
                 }
             }
 
-            foreach (LobbyPlayer player in lobby.Players)
+            foreach (StartRunLobbyPlayer player in lobby.Players)
             {
                 if (player.id == editingPlayer.id)
                 {
