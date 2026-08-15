@@ -1,4 +1,6 @@
 <Project Sdk="Godot.NET.Sdk/4.5.1">
+  <Import Project="LocalMultiControl.local.props" Condition="Exists('LocalMultiControl.local.props')" />
+
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>true</ImplicitUsings>
@@ -8,8 +10,12 @@
     <AssemblyName>DualRoleAdventure</AssemblyName>
     <RootNamespace>DualRoleAdventure</RootNamespace>
 
-    <!-- 改成你的杀戮尖塔2目录 -->
-    <Sts2Dir>E:\SteamLibrary\steamapps\common\Slay the Spire 2</Sts2Dir>
+    <!--
+      优先接受本地 props、命令行 -p:Sts2Dir=... 或 STS2_GAME_DIR 环境变量；
+      否则回退到 Windows 上的 Steam 默认目录。
+    -->
+    <Sts2Dir Condition="'$(Sts2Dir)' == '' and '$(STS2_GAME_DIR)' != ''">$(STS2_GAME_DIR)</Sts2Dir>
+    <Sts2Dir Condition="'$(Sts2Dir)' == ''">$(ProgramFiles(x86))\Steam\steamapps\common\Slay the Spire 2</Sts2Dir>
     <Sts2DataDir>$(Sts2Dir)\data_sts2_windows_x86_64</Sts2DataDir>
   </PropertyGroup>
 
